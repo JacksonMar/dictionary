@@ -540,7 +540,7 @@ public enum NotificationText { static func make(for: AddWordOutcome) -> Notifica
 Алгоритм `execute`: `SelectionValidator` → `.rejected` | `repository.add(draft{word: cleaned.text, status: .pending})`
 (дубль → `.duplicate`) → `processor.retry(entryID:)` → мапінг `ProcessingResult` → outcome:
 `.ready` → `.added`; `.pending(e, err)` → `.queued(e, err)`; `.failed(e, err)` → `.failed(e, err)`;
-`.skipped(e)` → `.queued(e, nil)` (запис щойно підхопив паралельний `processAll`); `.notFound` → `.storageError`.
+`.skipped(e)` → `e.status == .ready ? .added(e) : .queued(e, nil)` (запис щойно підхопив паралельний `processAll`; див. D17); `.notFound` → `.storageError`.
 Запис зберігається як `pending` **до** запиту — тож падіння застосунку чи офлайн не губить слово.
 
 Тексти (`NotificationText`):
@@ -673,6 +673,7 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
 | D14 | Ручне додавання | M1: форма з усіма полями, статус `ready`, перевірка дубля. M2+: додатково кнопка «Заповнити через Claude» (той самий `AddWordUseCase`). |
 | D15 | Sandbox | Вимкнено (ad-hoc, поза App Store). |
 | D16 | Поле `lastError` | Додаткове опційне поле запису (не ламає схему; ігнорується іншими читачами). |
+| D17 | Services-виклик під час обробки черги | Якщо запис уже обробляється паралельним `processAll` (`.skipped`), сповіщення — «Обробляється: word» (або «Додано», якщо запис уже `ready`). Остаточний результат окремим сповіщенням не надсилається — він видний лише у вікні словника / меню (`lastServiceMessage`, статус запису). |
 
 ---
 
@@ -706,7 +707,9 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
   macOS 15, тому недоступний). План: головне вікно відкривається лише через `openWindow(id: "dictionary")` з
   `MenuBarExtra`. Мітигація (перевірити на macOS 13): якщо система все ж відкриває вікно при старті, `AppDelegate`
   у `applicationDidFinishLaunching` закриває всі `NSApp.windows` з `identifier?.rawValue` що містить `"dictionary"`
-  або `"settings"` (лише при першому запуску, не при відкритті через Services).
+  або `"settings"` (лише при першому запуску, не при відкритті через Services). Формат `NSWindow.identifier`
+  для SwiftUI-сцен на macOS 13 не задокументований — **перевірити на Mac**. Запасний варіант: закривати всі
+  `NSApp.windows`, крім вікна `MenuBarExtra` (і панелей), або фільтрувати за `title` («Словник», «Налаштування»).
 
 ---
 
@@ -783,7 +786,7 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 | КП | Перевірка |
 |---|---|
 | M3.1 Валідація виділення, слово/фраза | `SelectionValidatorTests`: `testEmptyRejected`, `testWhitespaceOnlyRejected`, `testTooLongRejected`, `testTooManyWordsRejected`, `testNoLettersRejected`, `testSingleWordIsWord`, `testHyphenatedIsWord`, `testMultiWordIsPhrase`, `testMultilineCollapsed`, `testTrailingPunctuationStripped` |
-| M3.2 Use-case: додавання, дубль, офлайн, помилка | `ServiceRequestHandlerTests`: `testNewWordAddedReady`, `testDuplicateNoLookupCall`, `testDuplicateOfPendingReported`, `testOfflineQueued`, `testMissingKeyQueued`, `testUnauthorizedFailed`, `testRejectedCreatesNoEntry`, `testConcurrentSameWordAddedOnce`, `testAddDuringProcessAllReportsOutcome` (stub lookup блокується; паралельний `processAll` підхоплює запис → outcome `.queued(entry, nil)` або `.added`, але не дубль запиту; рівно 1 lookup) |
+| M3.2 Use-case: додавання, дубль, офлайн, помилка | `ServiceRequestHandlerTests`: `testNewWordAddedReady`, `testDuplicateNoLookupCall`, `testDuplicateOfPendingReported`, `testOfflineQueued`, `testMissingKeyQueued`, `testUnauthorizedFailed`, `testRejectedCreatesNoEntry`, `testConcurrentSameWordAddedOnce`, `testAddDuringProcessAllReportsOutcome` (stub lookup блокується; паралельний `processAll` підхоплює запис → outcome `.added(entry)`, якщо на момент `.skipped` запис уже `ready`, інакше `.queued(entry, nil)`; рівно 1 lookup, без дубля запису) |
 | M3.3 Тексти сповіщень | `NotificationTextTests`: `testAdded`, `testAddedLimitsToThreeTranslations`, `testDuplicate`, `testQueuedOffline`, `testQueuedMissingKey`, `testQueuedInFlight` («Обробляється: run»), `testFailed`, `testRejectedVariants` |
 | M3.4 Обробник Services з тестовим pasteboard | `ServicesProviderTests`: `testReadsPublicUTF8PlainText`, `testReadsLegacyStringType`, `testEmptyPasteboardSetsError`, `testPostsNotificationFromOutcome` |
 | M3.5 Info.plist і селектор | `InfoPlistServicesTests`: `testNSServicesEntry` (NSMessage, NSPortName, обидва NSSendTypes, NSMenuItem.default, NSRequiredContext), `testProviderRespondsToServiceSelector`, `testLSUIElementTrue` |
