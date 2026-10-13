@@ -109,7 +109,8 @@ final class ClaudeLookupServiceTests: XCTestCase {
         MockURLProtocol.setReplies([ClaudeFixtures.ok("{\"word\":\"run\"}"), ClaudeFixtures.ok()])
         let harness = LookupHarness()
 
-        XCTAssertEqual(try await harness.lookupRun(), ClaudeFixtures.expectedRunResult)
+        let awaited1 = try await harness.lookupRun()
+        XCTAssertEqual(awaited1, ClaudeFixtures.expectedRunResult)
         XCTAssertEqual(MockURLProtocol.requestCount, 2)
     }
 

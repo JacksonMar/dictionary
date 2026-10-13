@@ -115,10 +115,12 @@ final class PendingQueueProcessorTests: XCTestCase {
         let entry = try await h.addPending("give up")
 
         _ = await h.queue.processAll(ignoringBackoff: false)
-        XCTAssertEqual(await h.entry(entry.id)?.lastError, ClaudeError.offline.userMessage)
+        let awaited1 = await h.entry(entry.id)?.lastError
+        XCTAssertEqual(awaited1, ClaudeError.offline.userMessage)
         _ = await h.queue.processAll(ignoringBackoff: false)
 
-        let ready = try XCTUnwrap(await h.entry(entry.id))
+        let awaited2 = await h.entry(entry.id)
+        let ready = try XCTUnwrap(awaited2)
         XCTAssertEqual(ready.status, .ready)
         XCTAssertNil(ready.lastError)
         XCTAssertNil(ready.transcription, "empty transcription stored as nil")
@@ -138,9 +140,12 @@ final class PendingQueueProcessorTests: XCTestCase {
             XCTAssertEqual(pending.status, .pending)
             XCTAssertEqual(pending.lastError, "Немає мережі")
         }
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 0)
-        XCTAssertNil(await h.queue.nextAttempt(for: entry.id))
-        XCTAssertEqual(await h.entry(entry.id)?.status, .pending)
+        let awaited3 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited3, 0)
+        let awaited4 = await h.queue.nextAttempt(for: entry.id)
+        XCTAssertNil(awaited4)
+        let awaited5 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited5, .pending)
         XCTAssertEqual(h.lookup.callCount, 7)
     }
 
@@ -152,8 +157,10 @@ final class PendingQueueProcessorTests: XCTestCase {
             _ = await h.queue.processAll(ignoringBackoff: false)
         }
 
-        XCTAssertEqual(await h.entry(entry.id)?.status, .pending)
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 0)
+        let awaited6 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited6, .pending)
+        let awaited7 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited7, 0)
     }
 
     func testUnauthorizedBecomesFailed() async throws {
@@ -172,7 +179,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         let again = await h.queue.processAll(ignoringBackoff: true)
         XCTAssertEqual(again, [])
         XCTAssertEqual(h.lookup.callCount, 1)
-        XCTAssertEqual(await h.entry(entry.id)?.status, .failed)
+        let awaited8 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited8, .failed)
     }
 
     func testPermanentErrorsBecomeFailed() async throws {
@@ -200,8 +208,10 @@ final class PendingQueueProcessorTests: XCTestCase {
                 return XCTFail("attempt \(attempt): expected pending, got \(results)")
             }
             XCTAssertEqual(pending.status, .pending)
-            XCTAssertEqual(await h.queue.attemptCount(for: entry.id), attempt)
-            let next = try XCTUnwrap(await h.queue.nextAttempt(for: entry.id))
+            let awaited9 = await h.queue.attemptCount(for: entry.id)
+            XCTAssertEqual(awaited9, attempt)
+            let awaited10 = await h.queue.nextAttempt(for: entry.id)
+            let next = try XCTUnwrap(awaited10)
             XCTAssertEqual(next.timeIntervalSince(h.dates.now()), expectedDelays[attempt - 1])
             h.dates.current = next
         }
@@ -213,8 +223,10 @@ final class PendingQueueProcessorTests: XCTestCase {
         XCTAssertEqual(failed.status, .failed)
         XCTAssertEqual(failed.lastError, "Помилка сервера Claude (500)")
         XCTAssertEqual(h.lookup.callCount, 5)
-        XCTAssertNil(await h.queue.nextAttempt(for: entry.id))
-        XCTAssertEqual(await h.queue.processAll(ignoringBackoff: true), [], "failed is not retried automatically")
+        let awaited11 = await h.queue.nextAttempt(for: entry.id)
+        XCTAssertNil(awaited11)
+        let awaited12 = await h.queue.processAll(ignoringBackoff: true)
+        XCTAssertEqual(awaited12, [], "failed is not retried automatically")
     }
 
     func testRateLimitedBackoffHonorsRetryAfter() async throws {
@@ -223,7 +235,8 @@ final class PendingQueueProcessorTests: XCTestCase {
 
         _ = await h.queue.processDue()
 
-        let next = try XCTUnwrap(await h.queue.nextAttempt(for: entry.id))
+        let awaited13 = await h.queue.nextAttempt(for: entry.id)
+        let next = try XCTUnwrap(awaited13)
         XCTAssertEqual(next.timeIntervalSince(h.dates.now()), 300)
     }
 
@@ -235,20 +248,23 @@ final class PendingQueueProcessorTests: XCTestCase {
         XCTAssertEqual(h.lookup.callCount, 1)
 
         h.dates.advance(by: 29)
-        XCTAssertEqual(await h.queue.processDue(), [], "not due yet")
+        let awaited14 = await h.queue.processDue()
+        XCTAssertEqual(awaited14, [], "not due yet")
         XCTAssertEqual(h.lookup.callCount, 1)
 
         h.dates.advance(by: 1)
         let due = await h.queue.processDue()
         XCTAssertEqual(due.count, 1)
         XCTAssertEqual(h.lookup.callCount, 2)
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 2)
+        let awaited15 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited15, 2)
 
         // processAll(ignoringBackoff: true) ігнорує nextAttemptAt, але лічильник не скидає.
         let forced = await h.queue.processAll(ignoringBackoff: true)
         XCTAssertEqual(forced.count, 1)
         XCTAssertEqual(h.lookup.callCount, 3)
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 3)
+        let awaited16 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited16, 3)
     }
 
     func testBackoffOnlyAffectsFailingEntry() async throws {
@@ -261,15 +277,18 @@ final class PendingQueueProcessorTests: XCTestCase {
         let results = await h.queue.processDue()
 
         XCTAssertEqual(results.map { $0.entry?.id }, [second.id], "only the due entry is processed")
-        XCTAssertEqual(await h.entry(first.id)?.status, .pending)
-        XCTAssertEqual(await h.entry(second.id)?.status, .ready)
+        let awaited17 = await h.entry(first.id)?.status
+        XCTAssertEqual(awaited17, .pending)
+        let awaited18 = await h.entry(second.id)?.status
+        XCTAssertEqual(awaited18, .ready)
     }
 
     func testManualRetryOfFailed() async throws {
         let h = try await make([.failure(.unauthorized)])
         let entry = try await h.addPending("run")
         _ = await h.queue.processAll(ignoringBackoff: false)
-        XCTAssertEqual(await h.entry(entry.id)?.status, .failed)
+        let awaited19 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited19, .failed)
 
         h.lookup.setScript([.success(Self.runResult)])
         let result = await h.queue.retry(entryID: entry.id)
@@ -286,14 +305,17 @@ final class PendingQueueProcessorTests: XCTestCase {
         for _ in 1...3 {
             _ = await h.queue.processAll(ignoringBackoff: true)
         }
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 3)
-        XCTAssertNotNil(await h.queue.nextAttempt(for: entry.id))
+        let awaited20 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited20, 3)
+        let awaited21 = await h.queue.nextAttempt(for: entry.id)
+        XCTAssertNotNil(awaited21)
 
         // Manual retry while in backoff: runs immediately, counter restarts from 0 → after failure = 1.
         let result = await h.queue.retry(entryID: entry.id)
 
         XCTAssertEqual(result.entry?.status, .pending)
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 1)
+        let awaited22 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited22, 1)
         XCTAssertEqual(h.lookup.callCount, 4)
         // Тепер ще 4 невдачі до failed (а не 2).
         for _ in 1...3 {
@@ -310,12 +332,14 @@ final class PendingQueueProcessorTests: XCTestCase {
         for _ in 1...5 {
             _ = await h.queue.processAll(ignoringBackoff: true)
         }
-        XCTAssertEqual(await h.entry(entry.id)?.status, .failed)
+        let awaited23 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited23, .failed)
 
         let result = await h.queue.retry(entryID: entry.id)
 
         XCTAssertEqual(result.entry?.status, .pending, "reset counter: first failure after retry is pending")
-        XCTAssertEqual(await h.queue.attemptCount(for: entry.id), 1)
+        let awaited24 = await h.queue.attemptCount(for: entry.id)
+        XCTAssertEqual(awaited24, 1)
     }
 
     func testRetryOfReadyIsSkippedAndMissingIsNotFound() async throws {
@@ -326,7 +350,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         XCTAssertEqual(skipped, .skipped(ready))
 
         let missing = UUID()
-        XCTAssertEqual(await h.queue.retry(entryID: missing), .notFound(missing))
+        let awaited25 = await h.queue.retry(entryID: missing)
+        XCTAssertEqual(awaited25, .notFound(missing))
         XCTAssertEqual(h.lookup.callCount, 0)
     }
 
@@ -349,7 +374,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         let results = await processing.value
         XCTAssertEqual(results.first?.entry?.status, .ready)
         XCTAssertEqual(h.lookup.callCount, 1)
-        XCTAssertEqual(await h.entry(entry.id)?.status, .ready)
+        let awaited26 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited26, .ready)
     }
 
     func testConcurrentProcessAllDoesNotDoubleProcess() async throws {
@@ -372,7 +398,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         XCTAssertEqual(results.count, 2)
         XCTAssertEqual(h.lookup.callCount, 2, "each entry looked up exactly once")
         XCTAssertEqual(Set(h.lookup.texts), ["run", "walk"])
-        XCTAssertEqual(await h.entry(entry.id)?.status, .ready)
+        let awaited27 = await h.entry(entry.id)?.status
+        XCTAssertEqual(awaited27, .ready)
     }
 
     func testEntriesProcessedSequentially() async throws {
@@ -394,7 +421,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         let entry = try await h.addPending("run")
 
         _ = await h.queue.processAll(ignoringBackoff: false)
-        XCTAssertEqual(await h.entry(entry.id)?.word, "Run", "same key → model's word")
+        let awaited28 = await h.entry(entry.id)?.word
+        XCTAssertEqual(awaited28, "Run", "same key → model's word")
 
         var lemma = Self.runResult
         lemma.word = "run"
@@ -402,7 +430,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         let runs = try await h.addPending("runs")
 
         _ = await h.queue.processAll(ignoringBackoff: false)
-        let updated = try XCTUnwrap(await h.entry(runs.id))
+        let awaited29 = await h.entry(runs.id)
+        let updated = try XCTUnwrap(awaited29)
         XCTAssertEqual(updated.word, "runs", "different key → selection kept")
         XCTAssertEqual(updated.lemma, "run")
         XCTAssertEqual(updated.status, .ready)
@@ -415,7 +444,8 @@ final class PendingQueueProcessorTests: XCTestCase {
         let results = await h.queue.processAll(ignoringBackoff: false)
 
         XCTAssertEqual(results.first?.entry?.status, .failed)
-        XCTAssertEqual(await h.entry(entry.id)?.lastError, "Невідома мовна пара")
+        let awaited30 = await h.entry(entry.id)?.lastError
+        XCTAssertEqual(awaited30, "Невідома мовна пара")
         XCTAssertEqual(h.lookup.callCount, 0)
     }
 
@@ -432,7 +462,8 @@ final class PendingQueueProcessorTests: XCTestCase {
 
         let result = await task.value
         XCTAssertEqual(result, .notFound(entry.id))
-        XCTAssertEqual(await h.repository.allEntries(), [])
+        let awaited31 = await h.repository.allEntries()
+        XCTAssertEqual(awaited31, [])
     }
 
     func testAttemptsNotPersistedInJSON() async throws {

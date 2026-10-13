@@ -73,13 +73,19 @@ final class AddWordUseCaseTests: XCTestCase {
     func testRejectedCreatesNoEntry() async throws {
         let (h, useCase) = try await make([.success(ClaudeFixtures.expectedRunResult)])
 
-        XCTAssertEqual(await useCase.execute(rawText: nil), .rejected(.empty))
-        XCTAssertEqual(await useCase.execute(rawText: "   "), .rejected(.empty))
-        XCTAssertEqual(await useCase.execute(rawText: String(repeating: "a", count: 121)), .rejected(.tooLong(max: 120)))
-        XCTAssertEqual(await useCase.execute(rawText: "a b c d e f g h i"), .rejected(.tooManyWords(max: 8)))
-        XCTAssertEqual(await useCase.execute(rawText: "1234"), .rejected(.noLetters))
+        let awaited1 = await useCase.execute(rawText: nil)
+        XCTAssertEqual(awaited1, .rejected(.empty))
+        let awaited2 = await useCase.execute(rawText: "   ")
+        XCTAssertEqual(awaited2, .rejected(.empty))
+        let awaited3 = await useCase.execute(rawText: String(repeating: "a", count: 121))
+        XCTAssertEqual(awaited3, .rejected(.tooLong(max: 120)))
+        let awaited4 = await useCase.execute(rawText: "a b c d e f g h i")
+        XCTAssertEqual(awaited4, .rejected(.tooManyWords(max: 8)))
+        let awaited5 = await useCase.execute(rawText: "1234")
+        XCTAssertEqual(awaited5, .rejected(.noLetters))
 
-        XCTAssertEqual(await h.repository.allEntries(), [])
+        let awaited6 = await h.repository.allEntries()
+        XCTAssertEqual(awaited6, [])
         XCTAssertEqual(h.lookup.callCount, 0)
     }
 
@@ -89,6 +95,7 @@ final class AddWordUseCaseTests: XCTestCase {
 
         _ = await useCase.execute(rawText: "run")
 
-        XCTAssertEqual(await h.repository.allEntries().map(\.languagePair), ["en-uk"])
+        let awaited7 = await h.repository.allEntries().map(\.languagePair)
+        XCTAssertEqual(awaited7, ["en-uk"])
     }
 }
