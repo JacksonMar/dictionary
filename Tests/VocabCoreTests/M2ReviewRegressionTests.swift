@@ -239,7 +239,7 @@ final class M2ReviewRegressionTests: XCTestCase {
             let initial: EntryStatus
             let lookup: Result<LookupResult, ClaudeError>
             let expectedStatus: EntryStatus
-            let expectedError: ClaudeError?   // nil — `.transport(…)` про збереження
+            let expectedError: ClaudeError?   // nil — `.storage(…)` про збереження (M5: не `.transport`)
         }
         let scenarios: [Scenario] = [
             Scenario(name: "pending+success", initial: .pending, lookup: .success(ClaudeFixtures.expectedRunResult),
@@ -278,8 +278,8 @@ final class M2ReviewRegressionTests: XCTestCase {
             if let expectedError = scenario.expectedError {
                 XCTAssertEqual(result.error, expectedError, scenario.name)
             } else {
-                guard case .transport(let reason)? = result.error else {
-                    XCTFail("\(scenario.name): expected transport save error, got \(String(describing: result.error))")
+                guard case .storage(let reason)? = result.error else {
+                    XCTFail("\(scenario.name): expected storage save error, got \(String(describing: result.error))")
                     continue
                 }
                 XCTAssertTrue(reason.contains("не вдалося зберегти запис"), reason)
