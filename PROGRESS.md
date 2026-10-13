@@ -5,8 +5,8 @@
 | Bootstrap (агенти, CI) | done | – | – (CI на macos-15 працює) |
 | Architecture | done | 2 | PASS (ітерація 2) |
 | M1 — Каркас і зберігання | done | 1 | PASS (ітерація 1) |
-| M2 — Claude API | in progress | 1 | – |
-| M3 — Services | pending | – | – |
+| M2 — Claude API | done | 1 | PASS (ітерація 1) |
+| M3 — Services | in progress | 1 | – |
 | M4 — Експорт/імпорт | pending | – | – |
 | M5 — Полірування | pending | – | – |
 
@@ -29,6 +29,12 @@
 ### M1 — ітерація 1: PASS
 - Linux: 71 тест ядра, 0 падінь. macOS CI (run 38423702609): `swift test` ✅, `xcodegen` + `xcodebuild build` ✅, `xcodebuild test` ✅ (8 тестів застосунку).
 - Неблокуючі зауваження: гонка check-then-act у `AtomicFileWriter` при першому записі (виправити в M2); CI-кроки з `if: hashFiles` (прибрано); назви CI jobs в ARCHITECTURE.md (виправлено); ручний чекліст `docs/manual-tests/M1.md` — ⏳ виконати на Mac.
+
+### M2 — ітерація 1: PASS
+- Linux: 178 тестів ядра, 0 падінь. macOS CI (run 38426913778): `xcodebuild build` ✅, `xcodebuild test` ✅ (15 тестів, зокрема Keychain на реальному Keychain раннера).
+- Відхилення, прийняті Judge: ручне додавання — форма (`ready`) + окрема кнопка «Заповнити через Claude» (D14); невідома мовна пара → `failed` з «Невідома мовна пара»; відсутня `lemma` → `word`.
+- Неблокуючі зауваження (виправити в M3): редагування збереженого ключа в тексті серверної помилки (не лише шаблон `sk-ant-`); `APIKeyCache` замінює старий ключ; `EntryProcessor.store` ковтає помилку запису; немає кнопки «Повторити всі»; помилка запису рахує спробу, але запис ніколи не стає `failed`.
+- ⏳ `docs/manual-tests/M2.md` — виконати на Mac зі справжнім ключем.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
