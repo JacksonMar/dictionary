@@ -70,10 +70,10 @@ final class FileDictionaryStoreTests: XCTestCase {
         }
 
         XCTAssertEqual(try fixture.directory.fileNames(), ["dictionary.json"])
-        // Перший запис — moveItem (цілі ще нема), далі — replaceItem.
+        // Кожен запис (і перший, коли цілі ще нема) — лише replaceItem (rename(2)); moveItem не використовується.
         let calls = fixture.fileSystem.recordedCalls
-        XCTAssertEqual(calls.filter { $0 == .moveItem }.count, 1)
-        XCTAssertEqual(calls.filter { $0 == .replaceItem }.count, 4)
+        XCTAssertEqual(calls.filter { $0 == .moveItem }.count, 0)
+        XCTAssertEqual(calls.filter { $0 == .replaceItem }.count, 5)
         XCTAssertEqual(calls.filter { $0 == .writeData }.count, 5)
     }
 
@@ -110,10 +110,15 @@ final class FileDictionaryStoreTests: XCTestCase {
         XCTAssertEqual(try fixture.temporaryFiles(), [])
     }
 
-    func testFailedFirstMoveLeavesNoFiles() throws {
-        fixture.fileSystem.fail(.moveItem)
+    func testFailedFirstReplaceLeavesNoFiles() throws {
+        // Цілі ще нема: перший запис теж іде через replaceItem; збій не лишає ні цілі, ні тимчасового файлу.
+        fixture.fileSystem.fail(.replaceItem)
 
-        XCTAssertThrowsError(try store.save(DictionaryFile(entries: [TestFixtures.entry()])))
+        XCTAssertThrowsError(try store.save(DictionaryFile(entries: [TestFixtures.entry()]))) { error in
+            guard case StorageError.writeFailed = error else {
+                return XCTFail("expected StorageError.writeFailed, got \(error)")
+            }
+        }
 
         XCTAssertEqual(try fixture.directory.fileNames(), [])
     }
@@ -232,10 +237,8 @@ final class FileDictionaryStoreTests: XCTestCase {
     func testConcurrentSavesProduceValidFileWithoutTemporaryFiles() throws {
         let store = self.store
         let iterations = 40
-        // Файл уже існує → кожен запис іде через replaceItem (rename(2)). Паралельний *перший* запис
-        // (fileExists → moveItem) має гонку check-then-act — див. звіт Tester (AtomicFileWriter);
-        // у застосунку записи серіалізує actor DictionaryRepository.
-        try store.save(DictionaryFile(entries: [TestFixtures.entry(word: "seed")]))
+        // Без попереднього запису: файлу ще нема, усі паралельні записи — перші.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.fileURL.path))
         let errors = ErrorCollector()
 
         DispatchQueue.concurrentPerform(iterations: iterations) { index in
