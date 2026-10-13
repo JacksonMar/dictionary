@@ -356,11 +356,8 @@ final class M2ReviewRegressionTests: XCTestCase {
     func testExhaustedStateDoesNotAffectOtherEntries() async throws {
         let h = try await QueueHarness.make([.failure(.server(status: 500))])
         defer { h.remove() }
-        let run = try await h.addPending("run")
+        _ = try await h.addPending("run")
         h.fixture.fileSystem.fail(.replaceItem)
-        for _ in 1...RetryPolicy.defaultMaxAttempts {
-            _ = await h.queue.retry(entryID: run.id) // retry скидає лічильник — тож доводимо через processAll нижче
-        }
         // Довести `run` до вичерпання через авто-проходи.
         for _ in 1...RetryPolicy.defaultMaxAttempts {
             _ = await h.queue.processAll(ignoringBackoff: true)
