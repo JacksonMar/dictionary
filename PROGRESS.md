@@ -4,8 +4,8 @@
 |------|--------|----------|---------------|
 | Bootstrap (агенти, CI) | done | – | – (CI на macos-15 працює) |
 | Architecture | done | 2 | PASS (ітерація 2) |
-| M1 — Каркас і зберігання | in progress | 1 | – |
-| M2 — Claude API | pending | – | – |
+| M1 — Каркас і зберігання | done | 1 | PASS (ітерація 1) |
+| M2 — Claude API | in progress | 1 | – |
 | M3 — Services | pending | – | – |
 | M4 — Експорт/імпорт | pending | – | – |
 | M5 — Полірування | pending | – | – |
@@ -25,6 +25,10 @@
 
 ### Architecture — ітерація 2: PASS
 - Усі 7 зауважень виправлено. Неблокуючі нотатки (мапінг `.skipped`→`.added` для ready, D17, формат ідентифікаторів вікон) внесено в план.
+
+### M1 — ітерація 1: PASS
+- Linux: 71 тест ядра, 0 падінь. macOS CI (run 38423702609): `swift test` ✅, `xcodegen` + `xcodebuild build` ✅, `xcodebuild test` ✅ (8 тестів застосунку).
+- Неблокуючі зауваження: гонка check-then-act у `AtomicFileWriter` при першому записі (виправити в M2); CI-кроки з `if: hashFiles` (прибрано); назви CI jobs в ARCHITECTURE.md (виправлено); ручний чекліст `docs/manual-tests/M1.md` — ⏳ виконати на Mac.
 
 ## Відкриті питання / невизначеності щодо macOS API
 

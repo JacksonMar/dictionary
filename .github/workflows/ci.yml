@@ -12,7 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build & test core (Linux)
-        if: hashFiles('Package.swift') != ''
         run: swift test
 
   macos-core:
@@ -20,7 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Core package tests (macOS)
-        if: hashFiles('Package.swift') != ''
         run: swift test
 
   macos-app:
@@ -32,20 +30,16 @@ jobs:
           xcodebuild -version
           swift --version
       - name: Install XcodeGen
-        if: hashFiles('project.yml') != ''
         run: brew install xcodegen
       - name: Generate project
-        if: hashFiles('project.yml') != ''
         run: xcodegen generate
       - name: Build app
-        if: hashFiles('project.yml') != ''
         run: |
           set -o pipefail
           xcodebuild build -project VocabApp.xcodeproj -scheme VocabApp \
             -destination 'platform=macOS' -derivedDataPath build \
             CODE_SIGN_IDENTITY=- | tail -n 200
       - name: Test app
-        if: hashFiles('project.yml') != ''
         run: |
           set -o pipefail
           xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp \
