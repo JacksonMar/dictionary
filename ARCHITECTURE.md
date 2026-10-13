@@ -32,16 +32,18 @@ Sources/VocabCore/
   Languages/     LanguagePair.swift, LanguagePairRegistry.swift, EnglishUkrainian.swift
   Text/          TextNormalizer.swift, SelectionValidator.swift
   Support/       DateProvider.swift, AppPaths.swift, JSONCoding.swift
-  Storage/       FileSystem.swift, FileDictionaryStore.swift, BackupManager.swift
+  Storage/       FileSystem.swift, FileDictionaryStore.swift, BackupManager.swift,
+                 StorageError.swift, LoadResult.swift
   Repository/    DictionaryRepository.swift, RepositoryError.swift, EntryQuery.swift
-  Claude/        HTTPTransport.swift, ClaudeConfiguration.swift, ModelCapabilities.swift,
+  Claude/        HTTPTransport.swift, ClaudeConfiguration.swift,
                  ClaudeRequestBuilder.swift, ClaudeAPIClient.swift, ClaudeError.swift,
                  PromptBuilder.swift, LookupResponseParser.swift, ClaudeLookupService.swift
   Processing/    ErrorDisposition.swift, RetryPolicy.swift, EntryProcessor.swift, PendingQueueProcessor.swift
-  UseCases/      AddWordUseCase.swift, ServiceRequestHandler.swift, NotificationText.swift
+  UseCases/      AddWordUseCase.swift (+ AddWordOutcome), ServiceRequestHandler.swift (+ ServiceResponse),
+                 NotificationText.swift (+ NotificationContent)
   Transfer/      DictionaryExporter.swift, DictionaryImporter.swift, ImportMerger.swift,
                  ImportReport.swift, ImportError.swift, DictionaryTransferService.swift
-  Security/      SecretStore.swift, InMemorySecretStore.swift, Logger.swift
+  Security/      SecretStore.swift (+ SecretKey, SecretStoreError), InMemorySecretStore.swift, RedactingLogger.swift
   Settings/      SettingsStore.swift
 Tests/VocabCoreTests/              # усі тести ядра (Linux + macOS), Fixtures/*.json як рядкові константи у коді
 App/
@@ -53,7 +55,8 @@ App/
     AppEnvironment.swift           # isRunningTests, шляхи
     Views/   MenuBarContentView.swift, DictionaryWindowView.swift, EntryRowView.swift,
              EntryEditorView.swift, AddEntryView.swift, SettingsView.swift, ImportModeDialog.swift
-    Platform/ ServicesProvider.swift, KeychainSecretStore.swift, NotificationService.swift,
+    Platform/ ServicesProvider.swift, KeychainSecretStore.swift, UserNotifier.swift (протокол),
+             NotificationService.swift (UserNotifier через UNUserNotificationCenter),
              LoginItemService.swift, SpeechService.swift, FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift
   Tests/                           # VocabAppTests (лише macOS)
 docs/manual-tests/M1.md … M5.md
@@ -277,6 +280,8 @@ public protocol DictionaryStoring: Sendable {
   func load() throws -> LoadResult                   // { file: DictionaryFile; recoveredBackupURL: URL? }
   func save(_ file: DictionaryFile) throws           // атомарно, оновлює exportedAt
 }
+public struct LoadResult: Equatable, Sendable { public var file: DictionaryFile; public var recoveredBackupURL: URL? } // Storage/LoadResult.swift
+public enum StorageError: Error, Equatable { … }                                  // Storage/StorageError.swift, див. нижче
 public final class FileDictionaryStore: DictionaryStoring {   // immutable → Sendable
   public init(fileURL: URL, fileSystem: FileSystem = LocalFileSystem(), dateProvider: DateProvider = SystemDateProvider(),
               backups: BackupManager)
@@ -350,18 +355,18 @@ public struct URLSessionTransport: HTTPTransport { public init(session: URLSessi
 у `URLSessionConfiguration.ephemeral.protocolClasses`.
 
 `ClaudeConfiguration`: `endpoint = https://api.anthropic.com/v1/messages`, `apiVersion = "2023-06-01"`,
-`model` (з `SettingsStore`, за замовчуванням `claude-haiku-5-5`), `maxTokens = 2048`, `timeout = 30` с.
+`model` (з `SettingsStore`, за замовчуванням `claude-haiku-5-5`), `maxTokens = 4096`, `timeout = 30` с.
 
 ### 7.2 Запит
 
 `ClaudeRequestBuilder.makeRequest(prompt: BuiltPrompt, apiKey: String, configuration:) throws -> URLRequest`:
 - `POST`, `timeoutInterval = 30`, заголовки `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`.
-- Тіло: `{"model", "max_tokens": 2048, "system": <system>, "messages": [{"role":"user","content": <user>}]}`.
-- `output_config: {"effort": "low"}` додається **лише** якщо `ModelCapabilities.supportsEffort(model)` — префікси
-  `claude-haiku-5`, `claude-sonnet-5`, `claude-opus-5`, `claude-fable-5`. Для інших моделей поле не шлемо.
-- **Не** шлемо `temperature`/`top_p` (на Haiku 5.5 нестандартні значення → 400), `thinking` (на Haiku 5.5 adaptive
-  thinking увімкнено за замовчуванням; явне вимкнення залежить від моделі), assistant prefill (400 на нових моделях).
-- `max_tokens = 2048`: відповідь ~200 токенів, запас під adaptive thinking.
+- Тіло — **рівно чотири ключі верхнього рівня**:
+  `{"model": <з Settings>, "max_tokens": 4096, "system": <system>, "messages": [{"role":"user","content": <user>}]}`.
+- **Жодних інших ключів**: ні `temperature`/`top_p`/`top_k` (на Haiku 5.5 нестандартні значення → 400), ні `thinking`
+  (на Haiku 5.5 adaptive thinking увімкнено за замовчуванням; явне вимкнення залежить від моделі), ні `output_config`,
+  ні assistant prefill (400 на нових моделях). Так запит однаково валідний для будь-якої моделі з Settings.
+- `max_tokens = 4096`: відповідь ~200 токенів + великий запас під adaptive thinking, щоб уникати обрізання.
 
 ### 7.3 Промт (`PromptBuilder`)
 
@@ -382,7 +387,10 @@ public enum LookupResponseParser {
 }
 ```
 - Конверт Messages API: `content` — масив; беремо всі блоки `type == "text"`, ігноруємо `thinking` та інші.
-- `stop_reason == "refusal"` → `ClaudeError.refused`; `"max_tokens"` → `ClaudeError.invalidResponse` (підлягає повтору).
+- `stop_reason == "refusal"` → `ClaudeError.refused`.
+- `stop_reason == "max_tokens"`: якщо зібраний текст все ж парситься й проходить валідацію — приймаємо; якщо ні —
+  це **невалідний JSON** → `ClaudeError.invalidResponse("max_tokens")` → один повтор (§7.5) → при повторній
+  невдачі `failed` (§8.1).
 - Текст: знімаємо обгортку ```` ```json … ``` ````; беремо підрядок від першої `{` до останньої `}`; `JSONSerialization`.
 - Валідація: `word`, `part_of_speech`, `example.source`, `example.translation` — непорожні рядки після trim;
   `translations` — масив рядків, після trim/відкидання порожніх/дедуплікації 1…10 елементів; `lemma` — рядок
@@ -410,7 +418,7 @@ public protocol WordLookupService: Sendable {
   func lookup(text: String, kind: SelectionKind, pair: LanguagePair) async throws -> LookupResult
 }
 public final class ClaudeLookupService: WordLookupService {
-  public init(transport: HTTPTransport, secrets: SecretStore, settings: SettingsStore, logger: Logger)
+  public init(transport: HTTPTransport, secrets: SecretStore, settings: SettingsStore, logger: RedactingLogger)
 }
 ```
 - `message` для `badRequest` береться з тіла `{"type":"error","error":{"type","message"}}`, обрізається до 200 символів.
@@ -429,16 +437,17 @@ public protocol SecretStore: Sendable {
   func deleteSecret(for key: SecretKey) throws
 }
 public enum SecretKey: String, Sendable { case anthropicAPIKey = "anthropic-api-key" }
+public enum SecretStoreError: Error, Equatable { case keychain(status: Int32), encoding }   // Int32 = OSStatus; без значення секрету
 public final class InMemorySecretStore: SecretStore, @unchecked Sendable { /* NSLock */ }
 
 public enum LogLevel: String, Sendable { case debug, info, error }
 public protocol LogSink: Sendable { func write(level: LogLevel, message: String) }
-public final class Logger: Sendable {
+public final class RedactingLogger: Sendable {
   public init(sink: LogSink, secretsProvider: @escaping @Sendable () -> [String])
   public func debug/info/error(_ message: @autoclosure () -> String)
 }
 ```
-`Logger` перед записом: (1) замінює кожне входження кожного рядка з `secretsProvider()` довжиною ≥ 8 на `[REDACTED]`;
+`RedactingLogger` перед записом: (1) замінює кожне входження кожного рядка з `secretsProvider()` довжиною ≥ 8 на `[REDACTED]`;
 (2) regex `sk-ant-[A-Za-z0-9_\-]+` → `sk-ant-[REDACTED]`. `secretsProvider` у застосунку читає поточний ключ з
 кешу `AppModel` (не Keychain на кожен лог). `CapturingLogSink` (у тестах) і `PrintLogSink` (ядро) — реалізації.
 
@@ -477,7 +486,14 @@ public final class Logger: Sendable {
 ```swift
 public final class EntryProcessor: Sendable {          // обробляє ОДИН запис
   init(repository: DictionaryRepository, lookup: WordLookupService, registry: LanguagePairRegistry, dateProvider:)
-  func process(entryID: UUID, attempts: Int) async -> ProcessingResult   // .ready(Entry) | .pending(Entry, ClaudeError) | .failed(Entry, ClaudeError) | .skipped
+  func process(entryID: UUID, attempts: Int) async -> ProcessingResult
+}
+public enum ProcessingResult: Equatable, Sendable {
+  case ready(Entry)
+  case pending(Entry, ClaudeError)
+  case failed(Entry, ClaudeError)
+  case skipped(Entry)        // запис уже обробляється (в inFlight) або вже не pending/failed — нічого не зроблено
+  case notFound(UUID)        // запис видалено
 }
 public actor PendingQueueProcessor {
   init(repository:, processor: EntryProcessor, policy: RetryPolicy, dateProvider:)
@@ -486,6 +502,8 @@ public actor PendingQueueProcessor {
   func retry(entryID: UUID) async -> ProcessingResult    // кнопка «Повторити»: pending або failed, скидає attempts
 }
 ```
+- `retry(entryID:)` для запису, що **вже в обробці** (`inFlight`, напр. під час `processAll`), — no-op: повертає
+  `.skipped(entry)` без другого HTTP-запиту; результат тієї обробки прийде в UI через `repository.changes()`.
 - Записи обробляються **послідовно** (без паралельних запитів). Повторний виклик під час обробки не запускає
   другий прохід: actor тримає `isRunning`; запис, що вже в обробці (`inFlight: Set<UUID>`), пропускається.
 - Успіх: `word` оновлюється за D5, заповнюються поля, `status = .ready`, `lastError = nil`.
@@ -501,7 +519,7 @@ public actor PendingQueueProcessor {
 public enum AddWordOutcome: Equatable, Sendable {
   case added(Entry)                 // status ready
   case duplicate(Entry)             // уже є (будь-який статус)
-  case queued(Entry, ClaudeError)   // збережено як pending
+  case queued(Entry, ClaudeError?)  // збережено як pending; nil = вже обробляється (ProcessingResult.skipped)
   case failed(Entry, ClaudeError)   // збережено як failed
   case rejected(SelectionRejection) // нічого не збережено
   case storageError(String)
@@ -514,19 +532,23 @@ public final class ServiceRequestHandler: Sendable {   // точка входу 
   init(useCase: AddWordUseCase)
   func handle(text: String?) async -> ServiceResponse  // { outcome, notification: NotificationContent }
 }
+public struct ServiceResponse: Equatable, Sendable { outcome: AddWordOutcome; notification: NotificationContent } // ServiceRequestHandler.swift
 public struct NotificationContent: Equatable, Sendable { title: String; body: String }
 public enum NotificationText { static func make(for: AddWordOutcome) -> NotificationContent }
 ```
 
 Алгоритм `execute`: `SelectionValidator` → `.rejected` | `repository.add(draft{word: cleaned.text, status: .pending})`
-(дубль → `.duplicate`) → `processor.retry(entryID:)` → мапінг `ProcessingResult` → outcome.
+(дубль → `.duplicate`) → `processor.retry(entryID:)` → мапінг `ProcessingResult` → outcome:
+`.ready` → `.added`; `.pending(e, err)` → `.queued(e, err)`; `.failed(e, err)` → `.failed(e, err)`;
+`.skipped(e)` → `.queued(e, nil)` (запис щойно підхопив паралельний `processAll`); `.notFound` → `.storageError`.
 Запис зберігається як `pending` **до** запиту — тож падіння застосунку чи офлайн не губить слово.
 
 Тексти (`NotificationText`):
 - `.added` → title «Додано», body «Додано: run — бігти, керувати» (до 3 перекладів через «, »);
 - `.duplicate` → «Вже є в словнику», body «run — бігти» (або «run — очікує обробки» для pending/failed);
 - `.queued(.offline)` → «Збережено в чергу», body «run: немає мережі, переклад буде додано пізніше»;
-  `.queued(.missingAPIKey)` → «…: додайте API-ключ у налаштуваннях»; інші `.queued` → «…: повторимо пізніше»;
+  `.queued(.missingAPIKey)` → «…: додайте API-ключ у налаштуваннях»; інші `.queued(_, error)` → «…: повторимо пізніше»;
+  `.queued(_, nil)` (skipped) → title «Обробляється», body «Обробляється: run»;
 - `.failed` → «Не вдалося додати», body «run: <userMessage>»;
 - `.rejected(.empty)` → «Нічого не виділено»; `.tooLong` → «Виділено забагато тексту (макс. 120 символів)»;
   `.tooManyWords` → «… (макс. 8 слів)»; `.noLetters` → «Виділений текст не містить слів».
@@ -586,13 +608,14 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
   `Window("Налаштування", id: "settings")` (окреме вікно замість `Settings`-сцени, щоб на macOS 13 відкривати його
   через `openWindow` без приватного селектора `showSettingsWindow:`). Після `openWindow` —
   `NSApp.activate(ignoringOtherApps: true)` (LSUIElement-застосунок не активується сам).
+  Головне вікно при запуску **не відкривається**: лише через `openWindow` з `MenuBarExtra` (мітигація для macOS 13 — U12).
 - `AppDelegate` (композиційний корінь): створює `FileDictionaryStore`, `DictionaryRepository`,
   `KeychainSecretStore`, `ClaudeLookupService(URLSessionTransport(session: URLSession(configuration: .ephemeral)))`, процесори,
   `AppModel`. У `applicationDidFinishLaunching`, **якщо не `AppEnvironment.isRunningTests`**
   (`ProcessInfo.environment["XCTestConfigurationFilePath"] != nil`): `NSApp.servicesProvider = servicesProvider`;
   `NSUpdateDynamicServices()`; запит дозволу сповіщень; старт `NetworkMonitor`; `repository.load()`; `processAll`.
   Під тестами `AppModel` працює з тимчасовим каталогом і `InMemorySecretStore`.
-- `AppModel: ObservableObject` (`@MainActor`): `@Published entries`, `query`, `loadError`, `lastReport`; підписка
+- `AppModel: ObservableObject` (`@MainActor`): `@Published entries`, `query`, `loadError`, `lastReport`, `lastServiceMessage: String?` (текст останнього результату Services — показується в меню, якщо сповіщення заборонені), `hasAPIKey`; підписка
   на `repository.changes()` у `Task`; методи `addManual`, `addViaClaude`, `update`, `delete`, `retry`,
   `retryAll`, `export(to:)`, `import(from:mode:)`, `saveAPIKey`, `setModel`.
 - `ServicesProvider: NSObject` (`@MainActor`):
@@ -607,8 +630,8 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
   Точний бриджинг типу параметра `error` (`NSString?` vs `NSString`) — **перевірити компіляцією в CI** (U3).
 - `KeychainSecretStore: SecretStore` — `kSecClassGenericPassword`, `kSecAttrService = "com.vocabapp.VocabApp"`
   (ін'єктується; тести — унікальний), `kSecAttrAccount = SecretKey.rawValue`; `SecItemCopyMatching`/`Add`/`Update`/
-  `Delete`; `errSecItemNotFound` → `nil`. `OSStatus` помилки → `SecretStoreError.keychain(OSStatus)` (без значення).
-- `UserNotifier` (протокол у app) / `NotificationService` — `UNUserNotificationCenter`; якщо дозволу нема —
+  `Delete`; `errSecItemNotFound` → `nil`. `OSStatus` помилки → `SecretStoreError.keychain(status:)` (оголошено в ядрі, `Security/SecretStore.swift`; без значення секрету).
+- `UserNotifier` (протокол, `App/Sources/Platform/UserNotifier.swift`: `func requestAuthorization() async -> Bool`, `func post(_ content: NotificationContent) async`) / `NotificationService` — `UNUserNotificationCenter`; якщо дозволу нема —
   логуємо й показуємо останній результат у меню (`AppModel.lastServiceMessage`).
 - `LoginItemService` — `SMAppService.mainApp.register()/unregister()/status`; `.requiresApproval` → кнопка
   «Відкрити Login Items» (`SMAppService.openSystemSettingsLoginItems()`).
@@ -617,7 +640,7 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
   `NSOpenPanel` (`allowedContentTypes = [.json]`, один файл).
 - `NetworkMonitor` — `NWPathMonitor` на власній черзі; при переході в `.satisfied` → `Task { await processor.processAll(ignoringBackoff: true) }`.
 - `OSLogSink: LogSink` — `os.Logger(subsystem: "com.vocabapp.VocabApp", category:)`, повідомлення з `privacy: .public`
-  (вони вже відредаговані `Logger`).
+  (вони вже відредаговані `RedactingLogger`). Ім'я `RedactingLogger` обрано, щоб не конфліктувати з `os.Logger` в app-таргеті.
 
 ### 11.1 Конкурентність (Swift 5 mode, macOS 13)
 
@@ -643,7 +666,7 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
 | D7 | Політика повторів | Експоненційна: 30 с × 2^(n-1), максимум 15 хв, 5 спроб; `retry-after` має пріоритет; ручний «Повторити» ігнорує backoff і скидає лічильник. Стан спроб лише в пам'яті. |
 | D8 | Ключ дедуплікації (слова і фрази) | (`languagePair`, `key(word)`), де `key` = clean + lowercase + згорнуті пробіли + нормалізований апостроф. Однаково для слів і фраз. За `lemma` не дедуплікуємо (`runs` ≠ `run`). |
 | D9 | Модель за замовчуванням | `claude-haiku-5-5`; змінюється в Settings (текстове поле + скидання до default). |
-| D10 | `max_tokens` | 2048. |
+| D10 | `max_tokens` | 4096; тіло запиту — лише `model`, `max_tokens`, `system`, `messages` (без `output_config`/`thinking`/sampling). `stop_reason: max_tokens` з непарсним текстом = невалідний JSON → 1 повтор → `failed`. |
 | D11 | Таймаут | `URLRequest.timeoutInterval = 30` с на запит; з одним повтором при невалідному JSON — до ~60 с. |
 | D12 | Зіпсований `dictionary.json` | Переносимо в Backups як `corrupted`, стартуємо з порожнього, показуємо попередження. `schemaVersion > 1` — не чіпаємо, показуємо помилку. |
 | D13 | Невалідні окремі записи при імпорті | Пропускаються й рахуються в «пропущено»; помилки рівня файлу відхиляють імпорт цілком. |
@@ -669,11 +692,21 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
 - **U8** `SMAppService.mainApp` для застосунку поза `/Applications` і з ad-hoc підписом; ймовірний статус
   `.requiresApproval`.
 - **U9** Keychain з ad-hoc підписом: після кожної перезбірки змінюється підпис → можливі запити доступу до елемента
-  Keychain; у CI (`macos-15`) — чи не дасть `errSecInteractionNotAllowed` у тестах `KeychainSecretStoreTests`.
+  Keychain. CI: GitHub macOS-раннери мають розблокований login keychain, тому `KeychainSecretStoreTests` пишуть у
+  нього з унікальним `service` на прогін і прибирають у `tearDown`. **План Б**, якщо CI покаже
+  `errSecInteractionNotAllowed`: окремий крок у `ci.yml` перед `xcodebuild test` —
+  `security create-keychain -p ci build.keychain && security unlock-keychain -p ci build.keychain &&
+  security set-keychain-settings build.keychain && security list-keychains -d user -s build.keychain login.keychain &&
+  security default-keychain -s build.keychain`. `XCTSkip` не використовуємо.
 - **U10** XcodeGen-локальний пакет з `path: .` (пакет у корені поруч із `.xcodeproj`) і імпорт `VocabCore` у
   hosted-тестах без явного лінкування.
 - **U11** `AVSpeechSynthesisVoice(language: "en-US")` може повернути `nil` на CI-раннері (немає голосів).
-- **U12** `MenuBarExtra` + `openWindow` на macOS 13: активація вікна для LSUIElement-застосунку.
+- **U12** `MenuBarExtra` + `openWindow` на macOS 13: активація вікна для LSUIElement-застосунку, і чи **не
+  відкривається** перша `Window`-сцена автоматично при запуску (`defaultLaunchBehavior(.suppressed)` є лише з
+  macOS 15, тому недоступний). План: головне вікно відкривається лише через `openWindow(id: "dictionary")` з
+  `MenuBarExtra`. Мітигація (перевірити на macOS 13): якщо система все ж відкриває вікно при старті, `AppDelegate`
+  у `applicationDidFinishLaunching` закриває всі `NSApp.windows` з `identifier?.rawValue` що містить `"dictionary"`
+  або `"settings"` (лише при першому запуску, не при відкритті через Services).
 
 ---
 
@@ -697,7 +730,7 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
 
 **Файли:** `Package.swift`, `project.yml`, `App/Info.plist` (вже з `LSUIElement`, без `NSServices`),
 `Models/*`, `Languages/*`, `Text/TextNormalizer.swift`, `Support/*`, `Storage/*`, `Repository/DictionaryRepository.swift`,
-`Repository/RepositoryError.swift`, `Security/Logger.swift` (база); App: `VocabApp.swift`, `AppDelegate.swift`,
+`Repository/RepositoryError.swift`, `Security/RedactingLogger.swift` (база); App: `VocabApp.swift`, `AppDelegate.swift`,
 `AppModel.swift`, `AppEnvironment.swift`, `Views/DictionaryWindowView.swift`, `EntryRowView.swift`,
 `EntryEditorView.swift`, `AddEntryView.swift`, `MenuBarContentView.swift` (мінімальний: «Відкрити словник», «Вийти»),
 `App/Tests/AppModelTests.swift`, `docs/manual-tests/M1.md`.
@@ -717,7 +750,7 @@ Replace: (1) якщо поточний файл існує — `BackupManager.ma
 
 ### M2 — Claude API, Keychain, Settings, черга
 
-**Файли:** `Claude/*`, `Processing/*`, `Security/SecretStore.swift`, `InMemorySecretStore.swift`, `Logger.swift`
+**Файли:** `Claude/*`, `Processing/*`, `Security/SecretStore.swift`, `InMemorySecretStore.swift`, `RedactingLogger.swift`
 (повний), `Settings/SettingsStore.swift`, `UseCases/AddWordUseCase.swift`, `Text/SelectionValidator.swift`;
 App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.swift`, `Views/SettingsView.swift`
 (ключ — `SecureField`, показ лише «Ключ збережено»; модель; кнопка «Перевірити» не обов'язкова),
@@ -726,15 +759,15 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 
 | КП | Перевірка |
 |---|---|
-| M2.1 Коректний запит (endpoint, заголовки, тіло, модель з Settings) | `ClaudeRequestBuilderTests`: `testURLMethodAndHeaders`, `testBodyContainsModelMaxTokensSystemMessages`, `testNoTemperatureOrThinking`, `testEffortOnlyForSupportedModels`, `testTimeoutInterval` |
+| M2.1 Коректний запит (endpoint, заголовки, тіло, модель з Settings) | `ClaudeRequestBuilderTests`: `testURLMethodAndHeaders`, `testBodyContainsModelMaxTokensSystemMessages`, `testBodyContainsOnlyMinimalKeys` (множина ключів рівно `{model, max_tokens, system, messages}`; немає `temperature`/`top_p`/`thinking`/`output_config`), `testMaxTokensIs4096`, `testTimeoutInterval` |
 | M2.2 Промт залежить від пари, фрази → phrase | `PromptBuilderTests`: `testWordPromptContainsSchemaAndText`, `testPhrasePromptRequiresPhrase`, `testSelectionWrappedInTextTags`, `testCustomPairTemplateUsed` |
-| M2.3 Парсинг валідних/невалідних відповідей | `LookupResponseParserTests`: `testParsesValid`, `testParsesInsideCodeFence`, `testIgnoresThinkingBlocks`, `testMissingTranslationsInvalid`, `testEmptyTranslationsInvalid`, `testNonJSONInvalid`, `testMissingExampleInvalid`, `testPhraseForcesPhrasePOS`, `testExtraKeysIgnored`, `testMaxTokensStopReasonInvalid`, `testRefusalStopReason` |
-| M2.4 Один повтор при невалідному JSON | `ClaudeLookupServiceTests`: `testInvalidJSONRetriedOnceThenSucceeds` (2 запити), `testInvalidJSONTwiceFails` (рівно 2), `testHTTPErrorsNotRetried` (1 запит) |
+| M2.3 Парсинг валідних/невалідних відповідей | `LookupResponseParserTests`: `testParsesValid`, `testParsesInsideCodeFence`, `testIgnoresThinkingBlocks`, `testMissingTranslationsInvalid`, `testEmptyTranslationsInvalid`, `testNonJSONInvalid`, `testMissingExampleInvalid`, `testPhraseForcesPhrasePOS`, `testExtraKeysIgnored`, `testMaxTokensStopReasonWithTruncatedJSONInvalid`, `testMaxTokensStopReasonWithCompleteJSONAccepted`, `testRefusalStopReason` |
+| M2.4 Один повтор при невалідному JSON | `ClaudeLookupServiceTests`: `testInvalidJSONRetriedOnceThenSucceeds` (2 запити), `testInvalidJSONTwiceFails` (рівно 2), `testMaxTokensTruncationRetriedOnceThenFails` (рівно 2), `testHTTPErrorsNotRetried` (1 запит) |
 | M2.5 HTTP-помилки через мок `URLProtocol` | `ClaudeLookupServiceTests`: `test401Unauthorized`, `test403Forbidden`, `test429RateLimitedWithRetryAfter`, `test500Server`, `test529Overloaded`, `test400BadRequestMessageExtracted`, `testTimeout`, `testOffline`, `testMissingKeyNoRequest` |
 | M2.6 Ключ ніколи не в логах / JSON | `RedactingLoggerTests`: `testRedactsKnownSecret`, `testRedactsSkAntPattern`, `testLookupFlowNeverLogsKey` (успіх, 401, 500, offline), `testDictionaryFileNeverContainsKey` |
-| M2.7 Черга pending | `ErrorDispositionTests`: `testDispositionTable`; `RetryPolicyTests`: `testExponentialDelays`, `testCappedAt15Minutes`, `testRetryAfterHonored`; `PendingQueueProcessorTests`: `testPendingBecomesReady`, `testOfflineStaysPendingWithoutAttempt`, `testUnauthorizedBecomesFailed`, `testServerErrorFailsAfterFiveAttempts`, `testBackoffSkipsNotDueEntries`, `testManualRetryOfFailed`, `testConcurrentProcessAllDoesNotDoubleProcess`, `testWordReplacedByModelWordWhenKeysMatch` |
+| M2.7 Черга pending | `ErrorDispositionTests`: `testDispositionTable`; `RetryPolicyTests`: `testExponentialDelays`, `testCappedAt15Minutes`, `testRetryAfterHonored`; `PendingQueueProcessorTests`: `testPendingBecomesReady`, `testOfflineStaysPendingWithoutAttempt`, `testUnauthorizedBecomesFailed`, `testServerErrorFailsAfterFiveAttempts`, `testBackoffSkipsNotDueEntries`, `testManualRetryOfFailed`, `testRetryOfInFlightEntryIsSkipped`, `testConcurrentProcessAllDoesNotDoubleProcess`, `testWordReplacedByModelWordWhenKeysMatch` |
 | M2.8 Налаштування | `SettingsStoreTests`: `testDefaultModelIsHaiku55`, `testPersistsModel`, `testEmptyModelFallsBackToDefault`; `InMemorySecretStoreTests`: `testWriteReadDelete` |
-| M2.9 Keychain (macOS) | `KeychainSecretStoreTests`: `testWriteReadDelete`, `testOverwrite`, `testReadMissingReturnsNil` |
+| M2.9 Keychain (macOS) | `KeychainSecretStoreTests`: `testWriteReadDelete`, `testOverwrite`, `testReadMissingReturnsNil` (унікальний `service = "com.vocabapp.tests.<UUID>"` на кожен прогін, `deleteSecret` у `tearDown`) |
 
 `M2.md`: ввести реальний ключ, додати слово через «Заповнити через Claude», вимкнути Wi-Fi → `pending`, увімкнути →
 стає `ready` автоматично; невірний ключ → `failed` + «Повторити»; Console.app — ключа немає в логах;
@@ -750,8 +783,8 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 | КП | Перевірка |
 |---|---|
 | M3.1 Валідація виділення, слово/фраза | `SelectionValidatorTests`: `testEmptyRejected`, `testWhitespaceOnlyRejected`, `testTooLongRejected`, `testTooManyWordsRejected`, `testNoLettersRejected`, `testSingleWordIsWord`, `testHyphenatedIsWord`, `testMultiWordIsPhrase`, `testMultilineCollapsed`, `testTrailingPunctuationStripped` |
-| M3.2 Use-case: додавання, дубль, офлайн, помилка | `ServiceRequestHandlerTests`: `testNewWordAddedReady`, `testDuplicateNoLookupCall`, `testDuplicateOfPendingReported`, `testOfflineQueued`, `testMissingKeyQueued`, `testUnauthorizedFailed`, `testRejectedCreatesNoEntry`, `testConcurrentSameWordAddedOnce` |
-| M3.3 Тексти сповіщень | `NotificationTextTests`: `testAdded`, `testAddedLimitsToThreeTranslations`, `testDuplicate`, `testQueuedOffline`, `testQueuedMissingKey`, `testFailed`, `testRejectedVariants` |
+| M3.2 Use-case: додавання, дубль, офлайн, помилка | `ServiceRequestHandlerTests`: `testNewWordAddedReady`, `testDuplicateNoLookupCall`, `testDuplicateOfPendingReported`, `testOfflineQueued`, `testMissingKeyQueued`, `testUnauthorizedFailed`, `testRejectedCreatesNoEntry`, `testConcurrentSameWordAddedOnce`, `testAddDuringProcessAllReportsOutcome` (stub lookup блокується; паралельний `processAll` підхоплює запис → outcome `.queued(entry, nil)` або `.added`, але не дубль запиту; рівно 1 lookup) |
+| M3.3 Тексти сповіщень | `NotificationTextTests`: `testAdded`, `testAddedLimitsToThreeTranslations`, `testDuplicate`, `testQueuedOffline`, `testQueuedMissingKey`, `testQueuedInFlight` («Обробляється: run»), `testFailed`, `testRejectedVariants` |
 | M3.4 Обробник Services з тестовим pasteboard | `ServicesProviderTests`: `testReadsPublicUTF8PlainText`, `testReadsLegacyStringType`, `testEmptyPasteboardSetsError`, `testPostsNotificationFromOutcome` |
 | M3.5 Info.plist і селектор | `InfoPlistServicesTests`: `testNSServicesEntry` (NSMessage, NSPortName, обидва NSSendTypes, NSMenuItem.default, NSRequiredContext), `testProviderRespondsToServiceSelector`, `testLSUIElementTrue` |
 | M3.6 Пункт «Додати в словник» у Safari, Chrome, TextEdit; сповіщення | ⏳ manual `M3.md` |
@@ -796,7 +829,7 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 | M5.5 Menu bar | ⏳ manual |
 | M5.6 README: збірка, встановлення, активація Services, перенесення словника | Judge перевіряє наявність розділів у `README.md` |
 
-`M5.md`: меню в menu bar (усі пункти); автозапуск увімкнути → перелогін → застосунок запущено; статус
+`M5.md`: при запуску на macOS 13 (і 14/15) **жодне вікно не відкривається** — лише іконка в menu bar (U12); меню в menu bar (усі пункти); автозапуск увімкнути → перелогін → застосунок запущено; статус
 `requiresApproval` веде в Login Items; озвучення слова й фрази; пошук «біг» знаходить `run`; сортування;
 README-інструкції відтворювані на чистому користувачі.
 
