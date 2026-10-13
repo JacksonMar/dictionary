@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux-core:
+    runs-on: ubuntu-latest
+    container: swift:6.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & test core (Linux)
+        if: hashFiles('Package.swift') != ''
+        run: swift test
+
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Core package tests (macOS)
+        if: hashFiles('Package.swift') != ''
+        run: swift test
+      - name: Install XcodeGen
+        if: hashFiles('project.yml') != ''
+        run: brew install xcodegen
+      - name: Generate project
+        if: hashFiles('project.yml') != ''
+        run: xcodegen generate
+      - name: Build app
+        if: hashFiles('project.yml') != ''
+        run: |
+          set -o pipefail
+          xcodebuild build -project VocabApp.xcodeproj -scheme VocabApp \
+            -destination 'platform=macOS' -derivedDataPath build \
+            CODE_SIGN_IDENTITY=- | tail -n 200
+      - name: Test app
+        if: hashFiles('project.yml') != ''
+        run: |
+          set -o pipefail
+          xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp \
+            -destination 'platform=macOS' -derivedDataPath build \
+            CODE_SIGN_IDENTITY=- | tail -n 300
