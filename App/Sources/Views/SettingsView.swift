@@ -1,8 +1,8 @@
 import SwiftUI
 import VocabCore
 
-/// Налаштування (M2): API-ключ (лише в Keychain, значення ніколи не показується) і модель Claude.
-/// Автозапуск — M5, експорт/імпорт — M4.
+/// Налаштування: API-ключ (лише в Keychain, значення ніколи не показується), модель Claude (M2),
+/// перенесення словника — експорт/імпорт (M4). Автозапуск — M5.
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var apiKeyInput = ""
@@ -59,6 +59,35 @@ struct SettingsView: View {
                     .font(.headline)
             }
 
+            if model.isTransferAvailable {
+                Section {
+                    HStack {
+                        Button("Експортувати…") {
+                            Task { @MainActor in
+                                await model.exportWithPanel()
+                            }
+                        }
+                        Button("Імпортувати…") {
+                            model.beginImport()
+                        }
+                        if model.isTransferring {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Spacer()
+                    }
+                    .disabled(!model.isLoaded || model.isTransferring)
+                    Text("Експорт зберігає словник у файл JSON. Імпорт: «Об'єднати» або «Замінити» "
+                        + "(поточний словник спершу зберігається в Backups).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    Text("Перенесення")
+                        .font(.headline)
+                }
+            }
+
             if let error = model.settingsError {
                 Text(error)
                     .foregroundColor(.red)
@@ -69,6 +98,7 @@ struct SettingsView: View {
         .onAppear {
             modelInput = model.modelName
         }
+        .importModeDialog(model: model)
     }
 
     private func trimmed(_ value: String) -> String {

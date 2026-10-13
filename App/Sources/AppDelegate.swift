@@ -31,6 +31,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backups: backups
         )
         let repository = DictionaryRepository(store: store, dateProvider: dateProvider)
+        let transfer = DictionaryTransferService(
+            repository: repository,
+            store: store,
+            backups: backups,
+            fileSystem: fileSystem,
+            dateProvider: dateProvider
+        )
 
         // Під тестами — ні Keychain, ні реальних UserDefaults (§11).
         let isRunningTests = AppEnvironment.isRunningTests
@@ -55,7 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = AppModel(
             repository: repository,
             languagePairID: LanguagePairRegistry.defaultPairID,
-            claude: claude
+            claude: claude,
+            transfer: transfer,
+            filePanels: SystemFilePanels()
         )
 
         self.paths = paths

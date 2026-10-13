@@ -100,6 +100,34 @@ public actor DictionaryRepository {
         try commit(newEntries)
     }
 
+    /// Знімок записів для експорту; до успішного `load()` → `RepositoryError.notLoaded`
+    /// (щоб не експортувати порожній словник замість незавантаженого).
+    public func loadedEntries() throws -> [Entry] {
+        try ensureLoaded()
+        return entries
+    }
+
+    /// Імпорт у режимі «Об'єднати» (§10, D1): `ImportMerger.merge` з поточним станом і **один** атомарний запис —
+    /// в одному виклику актора, тож паралельні зміни (черга, Services) не губляться між читанням і записом.
+    /// Якщо нічого не додано й не оновлено — запису на диск нема.
+    public func mergeImported(_ imported: [Entry]) throws -> ImportReport {
+        try ensureLoaded()
+        let merged = ImportMerger.merge(local: entries, imported: imported)
+        if merged.report.added > 0 || merged.report.updated > 0 {
+            try commit(merged.entries)
+        }
+        return merged.report
+    }
+
+    /// Повна заміна вмісту з підготовчим кроком (імпорт «Замінити»): `beforeSave` (бекап поточного файлу)
+    /// виконується в тому ж виклику актора безпосередньо перед записом. Помилка `beforeSave` передається
+    /// нагору без змін, і нічого не записується.
+    public func replaceAll(_ newEntries: [Entry], beforeSave: @Sendable () throws -> Void) throws {
+        try ensureLoaded()
+        try beforeSave()
+        try commit(newEntries)
+    }
+
     /// Потік знімків: одразу поточний стан, далі — після кожної успішної зміни.
     /// Буферизується лише найновіший знімок.
     public func changes() -> AsyncStream<[Entry]> {

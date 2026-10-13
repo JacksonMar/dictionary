@@ -78,6 +78,29 @@ struct ClaudeServices {
     }
 }
 
+/// Повідомлення про результат експорту/імпорту (алерт у UI).
+struct TransferMessage: Identifiable, Equatable {
+    let id = UUID()
+    let title: String
+    let text: String
+    let isError: Bool
+}
+
+/// Крок імпорту, що чекає рішення користувача (§10): вибір режиму, далі — підтвердження заміни.
+enum ImportStage: Equatable {
+    /// Файл вибрано; діалог «Об'єднати» (за замовчуванням) / «Замінити».
+    case chooseMode(URL)
+    /// Вибрано «Замінити»; алерт підтвердження з попередженням про бекап.
+    case confirmReplace(URL)
+
+    var url: URL {
+        switch self {
+        case .chooseMode(let url), .confirmReplace(let url):
+            return url
+        }
+    }
+}
+
 /// Міст між `DictionaryRepository` та SwiftUI. Усі `@Published` змінюються лише на головному акторі.
 @MainActor
 final class AppModel: ObservableObject {
@@ -105,22 +128,44 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRetryingAll = false
     /// Текст останнього результату Services — показується в меню (видно й тоді, коли сповіщення заборонені).
     @Published var lastServiceMessage: String?
+    /// Звіт останнього успішного імпорту.
+    @Published private(set) var lastReport: ImportReport?
+    /// Результат останнього експорту/імпорту для алерту (успіх або помилка).
+    @Published var transferMessage: TransferMessage?
+    /// Імпорт, що чекає вибору режиму / підтвердження заміни.
+    @Published var importStage: ImportStage?
+    /// Іде експорт або імпорт.
+    @Published private(set) var isTransferring = false
+
+    /// Типова назва файлу експорту.
+    static let defaultExportFileName = "dictionary.json"
+    /// Скільки причин пропуску показувати в алерті звіту.
+    static let maxReportedSkipReasons = 10
 
     let languagePairID: String
     private let repository: DictionaryRepository
     private let claude: ClaudeServices?
+    private let transfer: DictionaryTransferService?
+    private let filePanels: FilePanelPresenting
+    /// Обробка імпортованих pending-записів, запущена після імпорту (для тестів — щоб дочекатися).
+    private(set) var postImportProcessing: Task<Void, Never>?
     private var changesTask: Task<Void, Never>?
     private var pendingTimer: Timer?
 
     /// `claude == nil` — без Claude (M1-режим): «Заповнити через Claude» і черга недоступні.
+    /// `transfer == nil` — експорт/імпорт недоступні. `filePanels == nil` — системні `NSSavePanel`/`NSOpenPanel`.
     init(
         repository: DictionaryRepository,
         languagePairID: String = LanguagePairRegistry.defaultPairID,
-        claude: ClaudeServices? = nil
+        claude: ClaudeServices? = nil,
+        transfer: DictionaryTransferService? = nil,
+        filePanels: FilePanelPresenting? = nil
     ) {
         self.repository = repository
         self.languagePairID = languagePairID
         self.claude = claude
+        self.transfer = transfer
+        self.filePanels = filePanels ?? SystemFilePanels()
         if let claude {
             modelName = claude.settings.model
         }
@@ -270,6 +315,147 @@ final class AppModel: ObservableObject {
     func processDue() async {
         guard let claude else { return }
         await claude.queue.processDue()
+    }
+
+    // MARK: - Експорт / імпорт (M4)
+
+    /// Доступні експорт та імпорт (є залежності).
+    var isTransferAvailable: Bool {
+        transfer != nil
+    }
+
+    /// «Експортувати»: `NSSavePanel` (`dictionary.json`) → `export(to:)`. Скасування панелі — нічого не робить.
+    func exportWithPanel() async {
+        guard transfer != nil, !isTransferring else { return }
+        guard let url = filePanels.chooseExportDestination(defaultFileName: Self.defaultExportFileName) else {
+            return
+        }
+        await export(to: url)
+    }
+
+    /// Експорт поточного словника в `url` (атомарний запис). Результат — у `transferMessage`.
+    @discardableResult
+    func export(to url: URL) async -> Bool {
+        guard let transfer else {
+            transferMessage = Self.unavailableTransferMessage
+            return false
+        }
+        guard !isTransferring else { return false }
+        isTransferring = true
+        defer { isTransferring = false }
+        do {
+            try await transfer.exportDictionary(to: url)
+            let count = await repository.allEntries().count
+            transferMessage = TransferMessage(
+                title: "Словник експортовано",
+                text: "Записів: \(count). Файл: \(url.path)",
+                isError: false
+            )
+            return true
+        } catch {
+            transferMessage = TransferMessage(
+                title: "Не вдалося експортувати",
+                text: Self.exportErrorMessage(error),
+                isError: true
+            )
+            return false
+        }
+    }
+
+    /// «Імпортувати»: `NSOpenPanel` → `importStage = .chooseMode(url)` (UI показує вибір режиму).
+    func beginImport() {
+        guard transfer != nil, !isTransferring else { return }
+        guard let url = filePanels.chooseImportSource() else { return }
+        importStage = .chooseMode(url)
+    }
+
+    /// Вибір режиму: «Об'єднати» — одразу імпорт; «Замінити» — спершу підтвердження (`.confirmReplace`).
+    /// Стан змінюється синхронно (до закриття діалогу SwiftUI); повертає задачу імпорту для «Об'єднати».
+    @discardableResult
+    func selectImportMode(_ mode: ImportMode) -> Task<Void, Never>? {
+        guard case .chooseMode(let url)? = importStage else { return nil }
+        switch mode {
+        case .merge:
+            importStage = nil
+            return Task { @MainActor [weak self] in
+                await self?.import(from: url, mode: .merge)
+            }
+        case .replace:
+            importStage = .confirmReplace(url)
+            return nil
+        }
+    }
+
+    /// Підтверджено «Замінити» (поточний словник буде збережено в Backups). Повертає задачу імпорту.
+    @discardableResult
+    func confirmReplaceImport() -> Task<Void, Never>? {
+        guard case .confirmReplace(let url)? = importStage else { return nil }
+        importStage = nil
+        return Task { @MainActor [weak self] in
+            await self?.import(from: url, mode: .replace)
+        }
+    }
+
+    func cancelImport() {
+        importStage = nil
+    }
+
+    /// Імпорт з `url`. Успіх → `lastReport` і `transferMessage` зі звітом; помилка → `transferMessage` з
+    /// україномовним текстом (словник не змінено). Імпортовані pending-записи передаються черзі.
+    @discardableResult
+    func `import`(from url: URL, mode: ImportMode) async -> ImportReport? {
+        guard let transfer else {
+            transferMessage = Self.unavailableTransferMessage
+            return nil
+        }
+        guard !isTransferring else { return nil }
+        isTransferring = true
+        defer { isTransferring = false }
+        do {
+            let report = try await transfer.importDictionary(from: url, mode: mode)
+            lastReport = report
+            transferMessage = TransferMessage(
+                title: "Імпорт завершено",
+                text: Self.reportText(report),
+                isError: false
+            )
+            apply(await repository.allEntries())
+            if claude != nil, entries.contains(where: { $0.status == .pending }) {
+                postImportProcessing = Task { @MainActor [weak self] in
+                    await self?.processPending()
+                }
+            }
+            return report
+        } catch {
+            let message = (error as? ImportError)?.userMessage
+                ?? "Не вдалося імпортувати: \(error.localizedDescription). Словник не змінено."
+            transferMessage = TransferMessage(title: "Не вдалося імпортувати", text: message, isError: true)
+            return nil
+        }
+    }
+
+    /// Текст звіту: «Додано X, оновлено Y, пропущено Z» і перші причини пропуску.
+    static func reportText(_ report: ImportReport) -> String {
+        guard !report.skippedReasons.isEmpty else { return report.summary }
+        var lines = report.skippedReasons.prefix(maxReportedSkipReasons).map { "• \($0)" }
+        let rest = report.skippedReasons.count - maxReportedSkipReasons
+        if rest > 0 {
+            lines.append("…та ще \(rest)")
+        }
+        return report.summary + "\n\nПропущено:\n" + lines.joined(separator: "\n")
+    }
+
+    private static let unavailableTransferMessage = TransferMessage(
+        title: "Перенесення недоступне",
+        text: "Експорт та імпорт недоступні",
+        isError: true
+    )
+
+    private static func exportErrorMessage(_ error: Error) -> String {
+        if case .writeFailed(let reason)? = error as? StorageError {
+            return "Не вдалося записати файл: \(reason)"
+        }
+        return message(for: error)
     }
 
     /// Зберігає ключ лише в `SecretStore` (Keychain). Повертає `true` при успіху.
