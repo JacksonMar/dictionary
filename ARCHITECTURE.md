@@ -562,18 +562,29 @@ public enum ImportMode: Sendable { case merge, replace }
 public struct ImportReport: Equatable, Sendable { added: Int; updated: Int; skipped: Int; skippedReasons: [String]
   var summary: String  // "Додано X, оновлено Y, пропущено Z" }
 public enum ImportError: Error, Equatable { case emptyFile, notJSON, missingSchemaVersion,
-  unsupportedSchemaVersion(Int), missingEntries, backupFailed(String), storage(String)
+  unsupportedSchemaVersion(Int), missingEntries, readFailed(String), backupFailed(String), storage(String)
   var userMessage: String }   // україномовні тексти
 public struct ParsedImport: Equatable, Sendable { entries: [Entry]; skippedReasons: [String] }
 public enum DictionaryImporter { static func parse(_ data: Data) throws -> ParsedImport }
-public enum ImportMerger { static func merge(local: [Entry], imported: [Entry]) -> (entries: [Entry], report: ImportReport) }
+public enum ImportMerger {
+  static func collapseDuplicates(_ imported: [Entry]) -> (entries: [Entry], skippedReasons: [String])
+  static func merge(local: [Entry], imported: [Entry]) -> (entries: [Entry], report: ImportReport)
+}
 public enum DictionaryExporter { static func exportData(entries: [Entry], now: Date) throws -> Data }
 public final class DictionaryTransferService: Sendable {
   init(repository:, store: DictionaryStoring, backups: BackupManager, fileSystem:, dateProvider:)
   func exportDictionary(to url: URL) async throws                   // атомарний запис тим самим механізмом
   func importDictionary(from url: URL, mode: ImportMode) async throws -> ImportReport
 }
+// Методи DictionaryRepository (§6), що обслуговують перенесення:
+extension DictionaryRepository {
+  func loadedEntries() throws -> [Entry]                       // для експорту; до load() → RepositoryError.notLoaded
+  func mergeImported(_ imported: [Entry]) throws -> ImportReport   // ImportMerger.merge + один commit в одному виклику актора
+  func replaceAll(_ entries: [Entry], beforeSave: @Sendable () throws -> Void) throws  // бекап у тому ж виклику
+}
 ```
+Помилка читання файлу (`fileSystem.readData`) → `ImportError.readFailed(reason)`; `RepositoryError` → `ImportError.storage`.
+Експорт бере записи через `loadedEntries()`, щоб не експортувати порожній незавантажений словник.
 
 Валідація (`parse`): 0 байтів або лише пробіли → `.emptyFile`; не JSON-об'єкт → `.notJSON`; немає `schemaVersion`
 (або не ціле) → `.missingSchemaVersion`; `schemaVersion != 1` → `.unsupportedSchemaVersion(n)`; `entries` відсутній
@@ -585,14 +596,18 @@ public final class DictionaryTransferService: Sendable {
 Merge (D1): дублікати всередині файлу згортаються першими (лишається новіший `updatedAt`, інші — `skipped`).
 Для кожного імпортованого: шукаємо локальний **за `id`**, якщо не знайдено — **за (`languagePair`, `key(word)`)**.
 - немає збігу → додати (`added`);
-- збіг і `imported.updatedAt > local.updatedAt` → замінити вміст імпортованим, **зберігши `id` локального**
-  (`updated`); виняток: імпортований `pending/failed` не перезаписує локальний `ready` (`skipped`);
+- збіг і `imported.updatedAt > local.updatedAt` → імпортований запис замінює локальний **цілком** (включно з його
+  `createdAt` і `updatedAt`), але **з `id` локального** (`updated`); винятки (`skipped`): імпортований `pending/failed`
+  не перезаписує локальний `ready`; заміна, що дала б дубль іншого локального запису за ключем D8;
 - інакше (старіший або рівний) → `skipped`.
-Результат зберігається одним `repository.replaceAll` (один атомарний запис).
+Виконується `repository.mergeImported(parsed.entries)`: злиття з поточним станом і один атомарний запис в одному
+виклику актора (паралельні зміни черги/Services не губляться); якщо `added == 0 && updated == 0` — запису на диск нема.
+До `skipped` звіту сервіс додає невалідні записи з `ParsedImport` (D13).
 
-Replace: (1) якщо поточний файл існує — `BackupManager.makeBackup(.replaceImport)`; помилка бекапу →
-`ImportError.backupFailed`, нічого не змінюється; (2) `repository.replaceAll(parsed.entries)` (усередині файлу
-дублі згортаються так само). Звіт: `added = count`, `updated = 0`, `skipped = пропущені`. Підтвердження —
+Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.replaceAll(collapsed, beforeSave:)`, де
+`beforeSave` (якщо поточний файл існує) робить `BackupManager.makeBackup(.replaceImport)` у тому ж виклику актора
+безпосередньо перед записом; помилка бекапу → `ImportError.backupFailed`, нічого не записується.
+Звіт: `added` = кількість записів після згортання, `updated = 0`, `skipped` = невалідні + дублікати у файлі. Підтвердження —
 в UI (`ImportModeDialog`: «Замінити словник? Поточний буде збережено в Backups.»).
 
 Експорт: `DictionaryFile(schemaVersion: 1, exportedAt: now, entries)`, ті самі налаштування енкодера. Імпортовані
