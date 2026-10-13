@@ -161,6 +161,8 @@ public final class EntryProcessor: Sendable {
 
     private func saveFailureMessage(_ error: Error) -> String {
         let message = (error as? RepositoryError)?.userMessage ?? error.localizedDescription
-        return "не вдалося зберегти запис: \(message)"
+        let text = "не вдалося зберегти запис: \(message)"
+        // Текст іде в результат/UI — та сама редакція, що й у логах (відомі секрети + шаблон `sk-ant-`).
+        return logger?.redact(text) ?? RedactingLogger.redactAPIKeyPattern(text)
     }
 }

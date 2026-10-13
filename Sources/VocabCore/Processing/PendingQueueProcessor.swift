@@ -54,17 +54,14 @@ public actor PendingQueueProcessor {
             if !ignoringBackoff, let due = nextAttemptAt[id], due > dateProvider.now() {
                 continue
             }
-            if inFlight.contains(id) {
-                if let entry = await repository.entry(id: id) {
-                    results.append(.skipped(entry))
-                }
-                continue
-            }
-            // Стан міг змінитися, поки оброблялися попередні записи.
+            // Стан міг змінитися, поки оброблялися попередні записи. Запис у `inFlight` перевіряється
+            // атомарно в `processOne` (без `await` між перевіркою і вставкою) → `.skipped`.
             guard let current = await repository.entry(id: id), current.status == .pending else {
                 continue
             }
-            results.append(await processOne(id))
+            if let result = await processOne(id, resetAttempts: false) {
+                results.append(result)
+            }
         }
         return results
     }
@@ -75,13 +72,10 @@ public actor PendingQueueProcessor {
         guard let entry = await repository.entry(id: entryID) else {
             return .notFound(entryID)
         }
-        if inFlight.contains(entryID) || entry.status == .ready {
+        if entry.status == .ready {
             return .skipped(entry)
         }
-        attempts[entryID] = nil
-        nextAttemptAt[entryID] = nil
-        exhausted.remove(entryID)
-        return await processOne(entryID)
+        return await processOne(entryID, resetAttempts: true) ?? .notFound(entryID)
     }
 
     /// Кількість зарахованих невдалих спроб (для діагностики й тестів).
@@ -96,9 +90,23 @@ public actor PendingQueueProcessor {
 
     // MARK: - Private
 
-    private func processOne(_ id: UUID) async -> ProcessingResult {
+    /// Обробляє запис, якщо він ще не в обробці. Перевірка й вставка в `inFlight` — без `await` між ними
+    /// (атомарно в межах актора), тож паралельні `processAll`/`retry` не запустять другий запит.
+    /// Запис, що вже в обробці, → `.skipped(поточний)` (або `nil`, якщо його вже видалено).
+    /// `resetAttempts` (ручний «Повторити») скидає лічильник/backoff лише тоді, коли обробку справді почато.
+    private func processOne(_ id: UUID, resetAttempts: Bool) async -> ProcessingResult? {
+        guard !inFlight.contains(id) else {
+            return await repository.entry(id: id).map { .skipped($0) }
+        }
         inFlight.insert(id)
+        // Видаляємо лише те, що вставив цей виклик (вище гарантовано, що до вставки запису не було).
         defer { inFlight.remove(id) }
+
+        if resetAttempts {
+            attempts[id] = nil
+            nextAttemptAt[id] = nil
+            exhausted.remove(id)
+        }
 
         let previous = attempts[id] ?? 0
         let result = await processor.process(entryID: id, attempts: previous, maxAttempts: policy.maxAttempts)
