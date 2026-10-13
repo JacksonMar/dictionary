@@ -6,8 +6,8 @@
 | Architecture | done | 2 | PASS (ітерація 2) |
 | M1 — Каркас і зберігання | done | 1 | PASS (ітерація 1) |
 | M2 — Claude API | done | 1 | PASS (ітерація 1) |
-| M3 — Services | in progress | 1 | – |
-| M4 — Експорт/імпорт | pending | – | – |
+| M3 — Services | done | 1 | PASS (ітерація 1) |
+| M4 — Експорт/імпорт | in progress | 1 | – |
 | M5 — Полірування | pending | – | – |
 
 ## Середовище перевірки
@@ -35,6 +35,13 @@
 - Відхилення, прийняті Judge: ручне додавання — форма (`ready`) + окрема кнопка «Заповнити через Claude» (D14); невідома мовна пара → `failed` з «Невідома мовна пара»; відсутня `lemma` → `word`.
 - Неблокуючі зауваження (виправити в M3): редагування збереженого ключа в тексті серверної помилки (не лише шаблон `sk-ant-`); `APIKeyCache` замінює старий ключ; `EntryProcessor.store` ковтає помилку запису; немає кнопки «Повторити всі»; помилка запису рахує спробу, але запис ніколи не стає `failed`.
 - ⏳ `docs/manual-tests/M2.md` — виконати на Mac зі справжнім ключем.
+
+### M3 — ітерація 1: PASS
+- Tester виявив гонку подвійної обробки запису (`processAll` vs `retry`) → Developer виправив (атомарні check+insert у `processOne`) до рев'ю Judge.
+- Linux: 223 тести, 0 падінь (QueueConcurrencyTests стабільний у 8 прогонах). macOS CI (run 38430377167): `xcodebuild build` ✅, `xcodebuild test` ✅ (33 тести, зокрема ServicesProviderTests 9, InfoPlistServicesTests 4), `swift test` на macOS ✅.
+- U3 (бриджинг сигнатури Services-методу) закрито: селектор компілюється, `responds(to:)` = true.
+- Неблокуючі зауваження (на M5): дубльований запит дозволу на сповіщення; `NotificationService` без анотацій конкурентності; текст «Services недоступні» поза §9; помилка запису показується як «Помилка мережі»; якщо холодний старт через Services не спрацює (U5) — реєструвати провайдер у `applicationWillFinishLaunching`.
+- ⏳ `docs/manual-tests/M3.md` — перевірка в Safari/Chrome/TextEdit на реальному Mac.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
