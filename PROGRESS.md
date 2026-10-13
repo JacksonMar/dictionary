@@ -2,9 +2,9 @@
 
 | Етап | Статус | Ітерації | Вердикт Judge |
 |------|--------|----------|---------------|
-| Bootstrap (агенти, CI) | in progress | – | – |
-| Architecture | pending | – | – |
-| M1 — Каркас і зберігання | pending | – | – |
+| Bootstrap (агенти, CI) | done | – | – (CI на macos-15 працює) |
+| Architecture | done | 2 | PASS (ітерація 2) |
+| M1 — Каркас і зберігання | in progress | 1 | – |
 | M2 — Claude API | pending | – | – |
 | M3 — Services | pending | – | – |
 | M4 — Експорт/імпорт | pending | – | – |
@@ -18,8 +18,31 @@
 
 ## Вердикти Judge
 
-_(заповнюється по ходу)_
+### Architecture — ітерація 1: FAIL
+- зайвий `output_config.effort` у тілі запиту; `max_tokens` 2048 замало; `Logger` конфліктує з `os.Logger`;
+  не визначено `.skipped` → сповіщення; неповна прив'язка типів до файлів; немає плану Б для Keychain на CI;
+  не враховано автовідкриття `Window` на macOS 13.
+
+### Architecture — ітерація 2: PASS
+- Усі 7 зауважень виправлено. Неблокуючі нотатки (мапінг `.skipped`→`.added` для ready, D17, формат ідентифікаторів вікон) внесено в план.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
-_(заповнюється по ходу)_
+Повний перелік і план перевірки — `ARCHITECTURE.md`, розділ «Невизначеності щодо macOS API» (U1–U12). Коротко:
+- U1 `NSPortName` vs `CFBundleName` для LSUIElement-застосунку.
+- U2 Чи з'являється сервіс без ручного вмикання в System Settings → Keyboard Shortcuts → Services.
+- U3 Бриджинг сигнатури `addToDictionary(_:userData:error:)` у Swift.
+- U4 Виявлення сервісу лише з `/Applications` / після `pbs -update`.
+- U5 Чи запускає система LSUIElement-застосунок при виклику сервісу.
+- U6 Підтримка Services у Chrome і для PDF.
+- U7 Сповіщення для ad-hoc підписаного застосунку.
+- U8 `SMAppService.mainApp` поза `/Applications` / з ad-hoc підписом.
+- U9 Keychain при зміні ad-hoc підпису; Keychain на CI.
+- U10 XcodeGen локальний пакет у корені.
+- U11 Наявність англійського голосу на CI.
+- U12 `MenuBarExtra` + `openWindow` на macOS 13, автовідкриття `Window`, формат ідентифікаторів вікон.
+
+## Рішення, прийняті без підтвердження користувача
+
+Користувач дозволив не чекати підтвердження. Рішення D1–D17 зафіксовані в `ARCHITECTURE.md` («Рішення щодо неоднозначностей»).
+Найважливіше: 429/5xx/таймаут теж ідуть у `pending` (до 5 спроб), 401/400 — одразу `failed`; конфлікт при merge — за `id` або за мовною парою + нормалізованим словом.
