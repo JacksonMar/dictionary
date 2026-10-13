@@ -11,7 +11,7 @@ public enum ErrorDisposition {
     /// | помилка | статус | лічильник |
     /// |---|---|---|
     /// | `.offline`, `.missingAPIKey` | `pending` | ні |
-    /// | `.timeout`, `.rateLimited`, `.server`, `.transport` | `pending`, на `maxAttempts`-й — `failed` | так |
+    /// | `.timeout`, `.rateLimited`, `.server`, `.transport`, `.storage` | `pending`, на `maxAttempts`-й — `failed` | так |
     /// | `.unauthorized`, `.forbidden`, `.badRequest`, `.invalidResponse`, `.refused` | `failed` | ні |
     public static func `for`(
         _ error: ClaudeError,
@@ -21,7 +21,7 @@ public enum ErrorDisposition {
         switch error {
         case .offline, .missingAPIKey:
             return (.pending, false)
-        case .timeout, .rateLimited, .server, .transport:
+        case .timeout, .rateLimited, .server, .transport, .storage:
             let total = attempts + 1
             return (total >= maxAttempts ? .failed : .pending, true)
         case .unauthorized, .forbidden, .badRequest, .invalidResponse, .refused:

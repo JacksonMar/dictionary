@@ -25,3 +25,9 @@ enum WindowID {
     static let dictionary = "dictionary"
     static let settings = "settings"
 }
+
+/// Заголовки сцен `Window` (також — запасний критерій для закриття вікон при запуску, U12).
+enum WindowTitle {
+    static let dictionary = "Словник"
+    static let settings = "Налаштування"
+}

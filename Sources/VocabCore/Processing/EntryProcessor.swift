@@ -113,11 +113,11 @@ public final class EntryProcessor: Sendable {
 
     /// Зберігає статус і `lastError` і повертає результат, що відповідає **збереженому** стану.
     /// Якщо збереження не вдалося:
-    /// - збережений `failed` (повтор failed-запису) → `.failed(збережений, .transport(…))`;
+    /// - збережений `failed` (повтор failed-запису) → `.failed(збережений, .storage(…))`;
     /// - збережений `ready` (заповнено паралельно) → `.skipped(збережений)`;
     /// - збережений `pending` і бажаний `pending` (втрачено лише `lastError`) → `.pending(збережений, error)`
     ///   з початковою помилкою, тож лічильник спроб поводиться як завжди;
-    /// - збережений `pending`, а бажаний `failed` → `.pending(збережений, .transport(…))`: черга рахує спробу
+    /// - збережений `pending`, а бажаний `failed` → `.pending(збережений, .storage(…))`: черга рахує спробу
     ///   з backoff і після `maxAttempts` перестає авто-повторювати запис (див. `PendingQueueProcessor`).
     private func persist(_ entry: Entry, error: ClaudeError, status: EntryStatus, lastError: String) async -> ProcessingResult {
         var updated = entry
@@ -148,7 +148,8 @@ public final class EntryProcessor: Sendable {
 
     /// Результат за збереженим станом запису, коли нові дані записати не вдалося.
     private func resultForUnsavedEntry(_ current: Entry, message: String) -> ProcessingResult {
-        let error = ClaudeError.transport(message)
+        // Помилка диска, не мережі: `.storage` (диспозиція — як у `.transport`, §8.1).
+        let error = ClaudeError.storage(message)
         switch current.status {
         case .ready:
             return .skipped(current)

@@ -38,7 +38,7 @@ public final class FileDictionaryStore: DictionaryStoring, Sendable {
         do {
             data = try fileSystem.readData(at: fileURL)
         } catch {
-            throw StorageError.readFailed(error.localizedDescription)
+            throw StorageError.readFailed(FileErrorText.describe(error))
         }
 
         let decoder = JSONCoding.makeDecoder()
@@ -80,7 +80,7 @@ public enum AtomicFileWriter {
         do {
             try fileSystem.createDirectory(at: directory)
         } catch {
-            throw StorageError.writeFailed(error.localizedDescription)
+            throw StorageError.writeFailed(FileErrorText.describe(error))
         }
 
         let tempURL = directory.appendingPathComponent(
@@ -91,7 +91,7 @@ public enum AtomicFileWriter {
             try fileSystem.writeData(data, to: tempURL)
         } catch {
             try? fileSystem.removeItem(at: tempURL)
-            throw StorageError.writeFailed(error.localizedDescription)
+            throw StorageError.writeFailed(FileErrorText.describe(error))
         }
 
         // Завжди `replaceItem` (rename(2)): атомарно і коли ціль існує, і коли її ще нема —
@@ -100,7 +100,7 @@ public enum AtomicFileWriter {
             try fileSystem.replaceItem(at: target, withItemAt: tempURL)
         } catch {
             try? fileSystem.removeItem(at: tempURL)
-            throw StorageError.writeFailed(error.localizedDescription)
+            throw StorageError.writeFailed(FileErrorText.describe(error))
         }
     }
 }

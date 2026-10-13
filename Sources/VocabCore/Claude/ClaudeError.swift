@@ -27,6 +27,9 @@ public enum ClaudeError: Error, Equatable {
     case refused
     /// Інші помилки транспорту (включно з `cancelled`).
     case transport(String)
+    /// Відповідь отримано (або помилку визначено), але новий стан запису не вдалося записати на диск.
+    /// Не мережева помилка; у таблиці §8.1 поводиться як `.transport` (pending, +1 спроба). Причина — без секретів.
+    case storage(String)
 }
 
 extension ClaudeError {
@@ -57,6 +60,10 @@ extension ClaudeError {
             return "Claude відмовився відповідати"
         case .transport(let reason):
             return "Помилка мережі: \(reason)"
+        case .storage(let reason):
+            // `reason` уже описує збій («не вдалося зберегти запис: …») — без мережевого префікса.
+            guard let first = reason.first else { return "Не вдалося зберегти запис" }
+            return first.uppercased() + reason.dropFirst()
         }
     }
 
@@ -74,6 +81,7 @@ extension ClaudeError {
         case .invalidResponse: return "invalidResponse"
         case .refused: return "refused"
         case .transport: return "transport"
+        case .storage: return "storage"
         }
     }
 

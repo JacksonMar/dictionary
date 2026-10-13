@@ -115,7 +115,7 @@ public struct BackupManager: Sendable {
         if let storage = error as? StorageError {
             return storage.userMessage
         }
-        return error.localizedDescription
+        return FileErrorText.describe(error)
     }
 }
 

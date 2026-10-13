@@ -57,16 +57,17 @@ final class ServicesProvider: NSObject {
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             error.pointee = Self.noTextErrorMessage as NSString
             let response = ServiceResponse(outcome: .rejected(.empty))
-            lastTask = Task { @MainActor [weak self] in
-                guard let self else { return response }
+            lastTask = Task { @MainActor in
                 await self.deliver(response)
                 return response
             }
             return
         }
-        lastTask = Task { @MainActor [weak self] in
-            guard let self else { return ServiceResponse(outcome: .storageError("Services недоступні")) }
-            return await self.handle(text: text)
+        // `self` захоплюється сильно: провайдер живе весь час роботи застосунку (`AppDelegate`), а задача
+        // відпускає замикання після завершення. Тож гілки «провайдер уже знищено» з окремим текстом поза §9 нема —
+        // кожен запит закінчується одним із текстів `NotificationText`.
+        lastTask = Task { @MainActor in
+            await self.handle(text: text)
         }
     }
 

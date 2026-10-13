@@ -38,11 +38,16 @@ extension ImportError {
         case .missingEntries:
             return "У файлі немає списку записів (entries). \(Self.untouched)"
         case .readFailed(let reason):
-            return "Не вдалося прочитати файл: \(reason). \(Self.untouched)"
+            return "Не вдалося прочитати файл: \(Self.clause(reason)). \(Self.untouched)"
         case .backupFailed(let reason):
-            return "Не вдалося створити резервну копію поточного словника (\(reason)). \(Self.untouched)"
+            return "Не вдалося створити резервну копію поточного словника (\(Self.clause(reason))). \(Self.untouched)"
         case .storage(let reason):
-            return "\(reason). \(Self.untouched)"
+            return "\(Self.clause(reason)). \(Self.untouched)"
         }
+    }
+
+    /// Причина без крапки в кінці: інакше вийде «…file.. Словник не змінено.».
+    private static func clause(_ reason: String) -> String {
+        FileErrorText.trimmingTrailingPeriods(reason)
     }
 }

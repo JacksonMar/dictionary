@@ -136,6 +136,12 @@ final class AppModel: ObservableObject {
     @Published var importStage: ImportStage?
     /// Іде експорт або імпорт.
     @Published private(set) var isTransferring = false
+    /// Пошук і сортування в головному вікні (M5, §6 `EntryQuery`).
+    @Published var query = EntryQuery()
+    /// Стан автозапуску (M5); `nil` — автозапуск недоступний (немає `LoginItemManaging`, напр. під тестами).
+    @Published private(set) var loginItemState: LoginItemState?
+    /// Помилка увімкнення/вимкнення автозапуску.
+    @Published var loginItemError: String?
 
     /// Типова назва файлу експорту.
     static let defaultExportFileName = "dictionary.json"
@@ -147,6 +153,9 @@ final class AppModel: ObservableObject {
     private let claude: ClaudeServices?
     private let transfer: DictionaryTransferService?
     private let filePanels: FilePanelPresenting
+    private let loginItems: LoginItemManaging?
+    private let speech: SpeechSpeaking?
+    private let registry: LanguagePairRegistry
     /// Обробка імпортованих pending-записів, запущена після імпорту (для тестів — щоб дочекатися).
     private(set) var postImportProcessing: Task<Void, Never>?
     private var changesTask: Task<Void, Never>?
@@ -154,21 +163,29 @@ final class AppModel: ObservableObject {
 
     /// `claude == nil` — без Claude (M1-режим): «Заповнити через Claude» і черга недоступні.
     /// `transfer == nil` — експорт/імпорт недоступні. `filePanels == nil` — системні `NSSavePanel`/`NSOpenPanel`.
+    /// `loginItems == nil` — автозапуск недоступний; `speech == nil` — озвучення недоступне (M5).
     init(
         repository: DictionaryRepository,
         languagePairID: String = LanguagePairRegistry.defaultPairID,
         claude: ClaudeServices? = nil,
         transfer: DictionaryTransferService? = nil,
-        filePanels: FilePanelPresenting? = nil
+        filePanels: FilePanelPresenting? = nil,
+        loginItems: LoginItemManaging? = nil,
+        speech: SpeechSpeaking? = nil,
+        registry: LanguagePairRegistry = .shared
     ) {
         self.repository = repository
         self.languagePairID = languagePairID
         self.claude = claude
         self.transfer = transfer
         self.filePanels = filePanels ?? SystemFilePanels()
+        self.loginItems = loginItems
+        self.speech = speech
+        self.registry = registry
         if let claude {
             modelName = claude.settings.model
         }
+        loginItemState = loginItems?.state
     }
 
     /// Доступні функції Claude (є залежності).
@@ -300,6 +317,82 @@ final class AppModel: ObservableObject {
         entries.contains { $0.status != .ready }
     }
 
+    /// Кількість записів, які обробить «Повторити всі» (`pending` + `failed`) — для меню.
+    var retryableCount: Int {
+        entries.reduce(0) { $0 + ($1.status == .ready ? 0 : 1) }
+    }
+
+    // MARK: - Пошук і сортування (M5)
+
+    /// Записи для списку з урахуванням `query` (пошук за словом/лемою/перекладом, сортування).
+    var visibleEntries: [Entry] {
+        query.apply(to: entries)
+    }
+
+    /// Активний непорожній пошуковий запит.
+    var isSearching: Bool {
+        !query.normalizedSearchText.isEmpty
+    }
+
+    // MARK: - Озвучення (M5)
+
+    var isSpeechAvailable: Bool {
+        speech != nil
+    }
+
+    /// Озвучує текст голосом мови-джерела пари (`LanguagePair.speechLanguageCode`; невідома пара → пара
+    /// за замовчуванням).
+    func speak(_ text: String, languagePair: String) {
+        guard let speech else { return }
+        speech.speak(text, languageCode: speechLanguageCode(for: languagePair))
+    }
+
+    func speak(_ entry: Entry) {
+        speak(entry.word, languagePair: entry.languagePair)
+    }
+
+    func speechLanguageCode(for languagePair: String) -> String {
+        let pair = registry.pair(id: languagePair)
+            ?? registry.pair(id: LanguagePairRegistry.defaultPairID)
+            ?? .englishUkrainian
+        return pair.speechLanguageCode
+    }
+
+    // MARK: - Автозапуск (M5)
+
+    var isLoginItemAvailable: Bool {
+        loginItems != nil
+    }
+
+    /// Тумблер «Запускати при вході в систему»: увімкнено, якщо елемент зареєстровано (у т.ч. чекає дозволу).
+    var launchAtLogin: Bool {
+        loginItemState == .enabled || loginItemState == .requiresApproval
+    }
+
+    /// Перечитує стан із системи (користувач міг змінити його в System Settings).
+    func refreshLoginItemState() {
+        guard let loginItems else { return }
+        loginItemState = loginItems.state
+    }
+
+    /// Вмикає/вимикає автозапуск. Помилка → `loginItemError`; стан завжди перечитується з системи.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        guard let loginItems else { return }
+        do {
+            try loginItems.setEnabled(enabled)
+            loginItemError = nil
+        } catch {
+            let action = enabled ? "увімкнути" : "вимкнути"
+            loginItemError = "Не вдалося \(action) автозапуск: \(error.localizedDescription)"
+        }
+        loginItemState = loginItems.state
+    }
+
+    /// Відкриває System Settings → General → Login Items (для стану `requiresApproval`).
+    func openLoginItemsSettings() {
+        loginItems?.openSystemSettings()
+    }
+
     /// Результат Services (§11): текст для меню.
     func recordServiceResponse(_ response: ServiceResponse) {
         lastServiceMessage = response.notification.singleLine
@@ -344,8 +437,8 @@ final class AppModel: ObservableObject {
         isTransferring = true
         defer { isTransferring = false }
         do {
-            try await transfer.exportDictionary(to: url)
-            let count = await repository.allEntries().count
+            // Кількість — з того самого знімка, що записано у файл.
+            let count = try await transfer.exportDictionary(to: url)
             transferMessage = TransferMessage(
                 title: "Словник експортовано",
                 text: "Записів: \(count). Файл: \(url.path)",

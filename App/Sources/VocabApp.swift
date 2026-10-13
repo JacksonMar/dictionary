@@ -12,13 +12,13 @@ struct VocabApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        Window("Словник", id: WindowID.dictionary) {
+        Window(WindowTitle.dictionary, id: WindowID.dictionary) {
             DictionaryWindowView()
                 .environmentObject(appDelegate.model)
         }
 
         // Окреме вікно замість `Settings`-сцени: відкривається через `openWindow` на macOS 13 (§11).
-        Window("Налаштування", id: WindowID.settings) {
+        Window(WindowTitle.settings, id: WindowID.settings) {
             SettingsView()
                 .environmentObject(appDelegate.model)
         }

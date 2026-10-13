@@ -1,8 +1,9 @@
+import AppKit
 import SwiftUI
 import VocabCore
 
 /// Налаштування: API-ключ (лише в Keychain, значення ніколи не показується), модель Claude (M2),
-/// перенесення словника — експорт/імпорт (M4). Автозапуск — M5.
+/// автозапуск (M5, `SMAppService`), перенесення словника — експорт/імпорт (M4).
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var apiKeyInput = ""
@@ -59,6 +60,21 @@ struct SettingsView: View {
                     .font(.headline)
             }
 
+            if model.isLoginItemAvailable {
+                Section {
+                    Toggle("Запускати при вході в систему", isOn: launchAtLoginBinding)
+                    loginItemStatus
+                    if let error = model.loginItemError {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } header: {
+                    Text("Запуск")
+                        .font(.headline)
+                }
+            }
+
             if model.isTransferAvailable {
                 Section {
                     HStack {
@@ -97,8 +113,41 @@ struct SettingsView: View {
         .frame(width: 480)
         .onAppear {
             modelInput = model.modelName
+            model.refreshLoginItemState()
+        }
+        // Користувач міг дозволити/заборонити автозапуск у System Settings, поки вікно було відкрите.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.refreshLoginItemState()
         }
         .importModeDialog(model: model)
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { model.launchAtLogin },
+            set: { model.setLaunchAtLogin($0) }
+        )
+    }
+
+    @ViewBuilder
+    private var loginItemStatus: some View {
+        switch model.loginItemState {
+        case .requiresApproval?:
+            Text("Потрібен дозвіл: System Settings → General → Login Items (Загальні → Об'єкти входу).")
+                .font(.caption)
+                .foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Відкрити Login Items") {
+                model.openLoginItemsSettings()
+            }
+        case .notFound?:
+            Text("Система не знайшла застосунок для автозапуску. Перемістіть VocabApp у /Applications і спробуйте ще раз.")
+                .font(.caption)
+                .foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        case .enabled?, .disabled?, nil:
+            EmptyView()
+        }
     }
 
     private func trimmed(_ value: String) -> String {

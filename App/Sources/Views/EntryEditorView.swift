@@ -112,8 +112,20 @@ struct EntryEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Редагувати запис")
-                .font(.headline)
+            HStack {
+                Text("Редагувати запис")
+                    .font(.headline)
+                Spacer()
+                if model.isSpeechAvailable {
+                    Button {
+                        model.speak(form.word, languagePair: entry.languagePair)
+                    } label: {
+                        Label("Озвучити", systemImage: "speaker.wave.2")
+                    }
+                    .help("Озвучити слово")
+                    .disabled(!form.canSave)
+                }
+            }
             EntryFormFields(form: $form)
             if let errorText {
                 Text(errorText)

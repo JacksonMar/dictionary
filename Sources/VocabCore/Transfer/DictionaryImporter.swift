@@ -16,7 +16,8 @@ public struct ParsedImport: Equatable, Sendable {
 /// Помилки рівня файлу (`ImportError`) відхиляють імпорт цілком. Окремі невалідні записи пропускаються з причиною
 /// «Запис #N: …» (N — порядковий номер у `entries`, з 1). Обов'язкові поля запису: `id` (UUID), `languagePair`
 /// (непорожній рядок; невідома пара допускається, §3.1), `word` (непорожній), `status` ∈ `ready|pending|failed`,
-/// `createdAt`, `updatedAt` (ISO8601), `translations` (масив рядків; для `ready` — непорожній).
+/// `createdAt`, `updatedAt` (ISO8601), `translations` (масив рядків; для `ready` — хоча б один непорожній після
+/// очищення). `word` очищується `TextNormalizer.clean`, переклади — trim і згортання пробілів (див. `normalized`).
 public enum DictionaryImporter {
     public static func parse(_ data: Data) throws -> ParsedImport {
         guard let text = String(data: data, encoding: .utf8) else {
@@ -87,7 +88,7 @@ public enum DictionaryImporter {
               !word.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return missing("word")
         }
-        guard let statusText = fields["status"] as? String, let status = EntryStatus(rawValue: statusText) else {
+        guard let statusText = fields["status"] as? String, EntryStatus(rawValue: statusText) != nil else {
             return missing("status")
         }
         guard let created = fields["createdAt"] as? String, JSONCoding.parseDate(created) != nil else {
@@ -99,14 +100,11 @@ public enum DictionaryImporter {
         guard let translations = fields["translations"] as? [Any], translations.allSatisfy({ $0 is String }) else {
             return missing("translations")
         }
-        if status == .ready && translations.isEmpty {
-            return .failure(EntryProblem(text: "готовий запис без перекладів"))
-        }
-
         // Обов'язкові поля перевірено; повне декодування ловить некоректні необов'язкові поля (example тощо).
+        let decoded: Entry
         do {
             let data = try JSONSerialization.data(withJSONObject: fields)
-            return .success(try JSONCoding.makeDecoder().decode(Entry.self, from: data))
+            decoded = try JSONCoding.makeDecoder().decode(Entry.self, from: data)
         } catch let DecodingError.typeMismatch(_, context) {
             return .failure(EntryProblem(text: "некоректне поле \(fieldName(context))"))
         } catch let DecodingError.valueNotFound(_, context) {
@@ -119,6 +117,33 @@ public enum DictionaryImporter {
         } catch {
             return .failure(EntryProblem(text: "некоректний формат запису"))
         }
+        return normalized(decoded)
+    }
+
+    /// Очищення імпортованого запису (як для виділення/ручного додавання): `word` — `TextNormalizer.clean`;
+    /// переклади — згорнуті пробіли + trim, порожні відкидаються. Крайня пунктуація перекладів **не** знімається
+    /// (`clean` зрізав би, напр., дужку в «бігти (швидко)»). `ready` без жодного непорожнього перекладу — пропуск.
+    static func normalized(_ entry: Entry) -> Result<Entry, EntryProblem> {
+        var result = entry
+        result.word = TextNormalizer.clean(entry.word)
+        guard !result.word.isEmpty else {
+            return .failure(EntryProblem(text: "некоректне поле word"))
+        }
+        result.translations = entry.translations
+            .map(collapseWhitespace)
+            .filter { !$0.isEmpty }
+        if result.status == .ready && result.translations.isEmpty {
+            return .failure(EntryProblem(text: "готовий запис без перекладів"))
+        }
+        return .success(result)
+    }
+
+    /// Будь-які пробільні символи → один пробіл, trim.
+    static func collapseWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: { character in
+            character.unicodeScalars.allSatisfy { CharacterSet.whitespacesAndNewlines.contains($0) }
+        })
+        .joined(separator: " ")
     }
 
     private static func fieldName(_ context: DecodingError.Context) -> String {

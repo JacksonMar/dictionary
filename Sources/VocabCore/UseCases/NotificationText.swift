@@ -57,6 +57,9 @@ public enum NotificationText {
                 reason = "немає мережі, переклад буде додано пізніше"
             case .missingAPIKey:
                 reason = "додайте API-ключ у налаштуваннях"
+            case .storage:
+                // Збій запису на диск, а не мережі (не «Помилка мережі»).
+                reason = "не вдалося зберегти запис, повторимо пізніше"
             default:
                 reason = "повторимо пізніше"
             }

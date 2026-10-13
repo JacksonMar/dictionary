@@ -1,8 +1,8 @@
 import SwiftUI
 import VocabCore
 
-/// Головне вікно: список записів, ручне додавання, редагування, видалення, «Повторити» для pending/failed,
-/// «Повторити всі» (якщо є pending/failed записи).
+/// Головне вікно: список записів, пошук (слово/лема/переклад) і сортування (M5), ручне додавання, редагування,
+/// видалення, озвучення, «Повторити» для pending/failed, «Повторити всі» (якщо є pending/failed записи).
 struct DictionaryWindowView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isAdding = false
@@ -12,7 +12,20 @@ struct DictionaryWindowView: View {
     var body: some View {
         content
             .frame(minWidth: 560, minHeight: 420)
+            .searchable(text: $model.query.searchText, placement: .toolbar, prompt: "Слово або переклад")
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Picker(selection: $model.query.sort) {
+                        ForEach(EntrySort.allCases, id: \.self) { sort in
+                            Text(sort.title).tag(sort)
+                        }
+                    } label: {
+                        Label("Сортування", systemImage: "arrow.up.arrow.down")
+                    }
+                    .pickerStyle(.menu)
+                    .help("Сортування списку")
+                    .disabled(!model.isLoaded)
+                }
                 ToolbarItem(placement: .primaryAction) {
                     if model.isClaudeAvailable && model.hasRetryableEntries {
                         if model.isRetryingAll {
@@ -96,14 +109,25 @@ struct DictionaryWindowView: View {
                 if model.entries.isEmpty {
                     messageView(systemImage: "character.book.closed", text: "Словник порожній. Додайте слово кнопкою «+».")
                 } else {
-                    List(model.entries) { entry in
-                        EntryRowView(
-                            entry: entry,
-                            isRetrying: model.retryingIDs.contains(entry.id),
-                            onEdit: { editingEntry = entry },
-                            onDelete: { entryPendingDeletion = entry },
-                            onRetry: model.isClaudeAvailable ? { retry(entry) } : nil
+                    let visible = model.visibleEntries
+                    if visible.isEmpty {
+                        messageView(
+                            systemImage: "magnifyingglass",
+                            text: "Нічого не знайдено за запитом «\(model.query.normalizedSearchText)»."
                         )
+                    } else {
+                        List(visible) { entry in
+                            EntryRowView(
+                                entry: entry,
+                                isRetrying: model.retryingIDs.contains(entry.id),
+                                onEdit: { editingEntry = entry },
+                                onDelete: { entryPendingDeletion = entry },
+                                onRetry: model.isClaudeAvailable ? { retry(entry) } : nil,
+                                onSpeak: model.isSpeechAvailable
+                                    ? { text in model.speak(text, languagePair: entry.languagePair) }
+                                    : nil
+                            )
+                        }
                     }
                 }
             }
@@ -150,5 +174,19 @@ struct DictionaryWindowView: View {
                 }
             }
         )
+    }
+}
+
+extension EntrySort {
+    /// Назва в меню сортування.
+    var title: String {
+        switch self {
+        case .dateNewest:
+            return "Спершу нові"
+        case .dateOldest:
+            return "Спершу старі"
+        case .alphabetical:
+            return "За алфавітом"
+        }
     }
 }

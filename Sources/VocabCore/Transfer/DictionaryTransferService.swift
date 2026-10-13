@@ -24,10 +24,13 @@ public final class DictionaryTransferService: Sendable {
 
     /// Записує поточний словник (`exportedAt` = зараз) атомарно (`AtomicFileWriter`) у `url`.
     /// Помилки: `RepositoryError.notLoaded`, `StorageError.writeFailed`.
-    public func exportDictionary(to url: URL) async throws {
+    /// - Returns: кількість записів у **записаному** файлі (той самий знімок, що й експортовано).
+    @discardableResult
+    public func exportDictionary(to url: URL) async throws -> Int {
         let entries = try await repository.loadedEntries()
         let data = try DictionaryExporter.exportData(entries: entries, now: dateProvider.now())
         try AtomicFileWriter.write(data, to: url, fileSystem: fileSystem)
+        return entries.count
     }
 
     /// Імпорт з `url`. Будь-яка помилка (`ImportError`) означає, що словник не змінено.
@@ -40,7 +43,7 @@ public final class DictionaryTransferService: Sendable {
         do {
             data = try fileSystem.readData(at: url)
         } catch {
-            throw ImportError.readFailed(error.localizedDescription)
+            throw ImportError.readFailed(FileErrorText.describe(error))
         }
         let parsed = try DictionaryImporter.parse(data)
 
@@ -64,7 +67,7 @@ public final class DictionaryTransferService: Sendable {
                     } catch let error as StorageError {
                         throw ImportError.backupFailed(Self.reason(of: error))
                     } catch {
-                        throw ImportError.backupFailed(error.localizedDescription)
+                        throw ImportError.backupFailed(FileErrorText.describe(error))
                     }
                 }
                 var report = ImportReport(added: collapsed.entries.count)
@@ -76,7 +79,7 @@ public final class DictionaryTransferService: Sendable {
         } catch let error as RepositoryError {
             throw ImportError.storage(error.userMessage)
         } catch {
-            throw ImportError.storage(error.localizedDescription)
+            throw ImportError.storage(FileErrorText.describe(error))
         }
     }
 

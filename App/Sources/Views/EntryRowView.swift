@@ -2,26 +2,30 @@ import SwiftUI
 import VocabCore
 
 /// Рядок списку: слово, транскрипція, частина мови, переклади, приклад; для `pending`/`failed` —
-/// позначка статусу, остання помилка і кнопка «Повторити».
+/// позначка статусу, остання помилка і кнопка «Повторити». Кнопка озвучення (M5) — якщо задано `onSpeak`.
 struct EntryRowView: View {
     let entry: Entry
     let isRetrying: Bool
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onRetry: (() -> Void)?
+    /// Озвучити текст (слово або приклад) мовою-джерелом пари запису.
+    let onSpeak: ((String) -> Void)?
 
     init(
         entry: Entry,
         isRetrying: Bool = false,
         onEdit: @escaping () -> Void,
         onDelete: @escaping () -> Void,
-        onRetry: (() -> Void)? = nil
+        onRetry: (() -> Void)? = nil,
+        onSpeak: ((String) -> Void)? = nil
     ) {
         self.entry = entry
         self.isRetrying = isRetrying
         self.onEdit = onEdit
         self.onDelete = onDelete
         self.onRetry = onRetry
+        self.onSpeak = onSpeak
     }
 
     var body: some View {
@@ -30,6 +34,16 @@ struct EntryRowView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(entry.word)
                         .font(.headline)
+                    if let onSpeak {
+                        Button {
+                            onSpeak(entry.word)
+                        } label: {
+                            Image(systemName: "speaker.wave.2")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Озвучити")
+                        .accessibilityLabel("Озвучити «\(entry.word)»")
+                    }
                     if let transcription = entry.transcription, !transcription.isEmpty {
                         Text(transcription)
                             .foregroundColor(.secondary)
@@ -85,6 +99,17 @@ struct EntryRowView: View {
         }
         .padding(.vertical, 4)
         .contextMenu {
+            if let onSpeak {
+                Button("Озвучити") {
+                    onSpeak(entry.word)
+                }
+                if let example = entry.example, !example.source.isEmpty {
+                    Button("Озвучити приклад") {
+                        onSpeak(example.source)
+                    }
+                }
+                Divider()
+            }
             if entry.status != .ready, let onRetry {
                 Button("Повторити", action: onRetry)
                     .disabled(isRetrying)

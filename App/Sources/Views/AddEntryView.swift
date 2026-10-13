@@ -12,8 +12,20 @@ struct AddEntryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Нове слово")
-                .font(.headline)
+            HStack {
+                Text("Нове слово")
+                    .font(.headline)
+                Spacer()
+                if model.isSpeechAvailable {
+                    Button {
+                        model.speak(form.word, languagePair: model.languagePairID)
+                    } label: {
+                        Label("Озвучити", systemImage: "speaker.wave.2")
+                    }
+                    .help("Озвучити слово")
+                    .disabled(!form.canSave)
+                }
+            }
             EntryFormFields(form: $form)
             if let errorText {
                 Text(errorText)
