@@ -31,10 +31,10 @@ Sources/VocabCore/
   Models/        Entry.swift, Example.swift, EntryStatus.swift, EntryDraft.swift, DictionaryFile.swift
   Languages/     LanguagePair.swift, LanguagePairRegistry.swift, EnglishUkrainian.swift
   Text/          TextNormalizer.swift, SelectionValidator.swift
-  Support/       DateProvider.swift, AppPaths.swift, JSONCoding.swift
+  Support/       DateProvider.swift, AppPaths.swift, JSONCoding.swift, FileErrorText.swift (україномовні тексти файлових помилок)
   Storage/       FileSystem.swift, FileDictionaryStore.swift, BackupManager.swift,
                  StorageError.swift, LoadResult.swift
-  Repository/    DictionaryRepository.swift, RepositoryError.swift, EntryQuery.swift
+  Repository/    DictionaryRepository.swift, RepositoryError.swift, EntryQuery.swift (EntryQuery + EntrySort)
   Claude/        HTTPTransport.swift, ClaudeConfiguration.swift,
                  ClaudeRequestBuilder.swift, ClaudeAPIClient.swift, ClaudeError.swift,
                  PromptBuilder.swift, LookupResponseParser.swift, ClaudeLookupService.swift
@@ -57,7 +57,7 @@ App/
              EntryEditorView.swift, AddEntryView.swift, SettingsView.swift, ImportModeDialog.swift
     Platform/ ServicesProvider.swift, KeychainSecretStore.swift, UserNotifier.swift (протокол),
              NotificationService.swift (UserNotifier через UNUserNotificationCenter),
-             LoginItemService.swift, SpeechService.swift, FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift
+             LoginItemService.swift (LoginItemManaging), SpeechService.swift (SpeechSpeaking), FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift
   Tests/                           # VocabAppTests (лише macOS)
 docs/manual-tests/M1.md … M5.md
 README.md                          # M5
@@ -336,7 +336,8 @@ public enum RepositoryError: Error, Equatable { case duplicate(Entry), notFound(
 - Перевірка дубля й вставка відбуваються в одному виклику actor-а → два паралельні Services-виклики з тим самим
   словом не створять двох записів.
 - `EntryQuery` (M5): `struct EntryQuery { var searchText: String; var sort: EntrySort }`,
-  `enum EntrySort { case dateNewest, dateOldest, alphabetical }`, `func apply(to: [Entry]) -> [Entry]`.
+  `enum EntrySort: String, CaseIterable { case dateNewest, dateOldest, alphabetical }`, `func apply(to: [Entry]) -> [Entry]`,
+  `func matches(_ entry: Entry) -> Bool`. Пошуковий текст попередньо trim-иться; порожній → усі записи.
   Пошук: `range(of:options:[.caseInsensitive, .diacriticInsensitive])` по `word`, `lemma`, кожному `translations`.
   Алфавіт: за `TextNormalizer.key(word)`, тай-брейк за `createdAt`.
 
@@ -413,6 +414,8 @@ public enum ClaudeError: Error, Equatable {
   case invalidResponse(String)      // невалідний JSON / схема / max_tokens
   case refused
   case transport(String)            // інші URLError (крім cancelled → теж .transport("cancelled"))
+  case storage(String)              // збій збереження запису на диск під час обробки (не мережа);
+                                    //   userMessage — сам опис («Не вдалося зберегти запис…»), без префікса «Помилка мережі»
 }
 public protocol WordLookupService: Sendable {
   func lookup(text: String, kind: SelectionKind, pair: LanguagePair) async throws -> LookupResult
@@ -466,7 +469,7 @@ public final class RedactingLogger: Sendable {
 | `.offline` | `pending` | не збільшується | при відновленні мережі / старті / таймері |
 | `.missingAPIKey` | `pending` | не збільшується | після збереження ключа в Settings |
 | `.timeout`, `.rateLimited`, `.server` | `pending` | +1 | за `RetryPolicy`; після 5-ї невдалої — `failed` |
-| `.transport` | `pending` | +1 | як вище |
+| `.transport`, `.storage` | `pending` | +1 | як вище (на 5-й спробі — `failed`) |
 | `.unauthorized`, `.forbidden`, `.badRequest`, `.invalidResponse`, `.refused` | `failed` | — | лише кнопка «Повторити» |
 
 `ErrorDisposition.for(_ error: ClaudeError, attempts: Int) -> (status: EntryStatus, countsAttempt: Bool)`.
@@ -547,7 +550,7 @@ public enum NotificationText { static func make(for: AddWordOutcome) -> Notifica
 - `.added` → title «Додано», body «Додано: run — бігти, керувати» (до 3 перекладів через «, »);
 - `.duplicate` → «Вже є в словнику», body «run — бігти» (або «run — очікує обробки» для pending/failed);
 - `.queued(.offline)` → «Збережено в чергу», body «run: немає мережі, переклад буде додано пізніше»;
-  `.queued(.missingAPIKey)` → «…: додайте API-ключ у налаштуваннях»; інші `.queued(_, error)` → «…: повторимо пізніше»;
+  `.queued(.missingAPIKey)` → «…: додайте API-ключ у налаштуваннях»; `.queued(.storage)` → «run: не вдалося зберегти запис, повторимо пізніше»; інші `.queued(_, error)` → «…: повторимо пізніше»;
   `.queued(_, nil)` (skipped) → title «Обробляється», body «Обробляється: run»;
 - `.failed` → «Не вдалося додати», body «run: <userMessage>»;
 - `.rejected(.empty)` → «Нічого не виділено»; `.tooLong` → «Виділено забагато тексту (макс. 120 символів)»;
@@ -573,7 +576,8 @@ public enum ImportMerger {
 public enum DictionaryExporter { static func exportData(entries: [Entry], now: Date) throws -> Data }
 public final class DictionaryTransferService: Sendable {
   init(repository:, store: DictionaryStoring, backups: BackupManager, fileSystem:, dateProvider:)
-  func exportDictionary(to url: URL) async throws                   // атомарний запис тим самим механізмом
+  @discardableResult
+  func exportDictionary(to url: URL) async throws -> Int            // атомарний запис; повертає кількість записів
   func importDictionary(from url: URL, mode: ImportMode) async throws -> ImportReport
 }
 // Методи DictionaryRepository (§6), що обслуговують перенесення:
@@ -592,6 +596,9 @@ extension DictionaryRepository {
 запис з відсутнім обов'язковим полем (`id` як UUID, `languagePair`, непорожній `word`, `status` ∈ enum,
 `createdAt`, `updatedAt`, `translations` — масив, для `ready` непорожній) → пропускається з причиною
 «Запис #N: відсутнє поле word». Помилка рівня файлу → словник не змінюється взагалі.
+Очищення прийнятих записів: `word` → `TextNormalizer.clean`; кожен переклад — згортання пробілів + trim, порожні
+відкидаються (крайня пунктуація перекладів **не** знімається, напр. «бігти (швидко)»); `ready` без жодного
+непорожнього перекладу після очищення → пропуск. Тексти файлових помилок — `FileErrorText.describe(_:)`.
 
 Merge (D1): дублікати всередині файлу згортаються першими (лишається новіший `updatedAt`, інші — `skipped`).
 Для кожного імпортованого: шукаємо локальний **за `id`**, якщо не знайдено — **за (`languagePair`, `key(word)`)**.
@@ -630,7 +637,9 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   (`ProcessInfo.environment["XCTestConfigurationFilePath"] != nil`): `NSApp.servicesProvider = servicesProvider`;
   `NSUpdateDynamicServices()`; запит дозволу сповіщень; старт `NetworkMonitor`; `repository.load()`; `processAll`.
   Під тестами `AppModel` працює з тимчасовим каталогом і `InMemorySecretStore`.
-- `AppModel: ObservableObject` (`@MainActor`): `@Published entries`, `query`, `loadError`, `lastReport`, `lastServiceMessage: String?` (текст останнього результату Services — показується в меню, якщо сповіщення заборонені), `hasAPIKey`; підписка
+- `AppModel: ObservableObject` (`@MainActor`), init: `repository:`, `languagePairID:`, `claude:`, `transfer:`,
+  `filePanels:`, `loginItems: LoginItemManaging?`, `speech: SpeechSpeaking?`, `registry: LanguagePairRegistry`
+  (`nil` → відповідна функція недоступна); `@Published entries`, `query`, `loadError`, `lastReport`, `lastServiceMessage: String?` (текст останнього результату Services — показується в меню, якщо сповіщення заборонені), `hasAPIKey`; підписка
   на `repository.changes()` у `Task`; методи `addManual`, `addViaClaude`, `update`, `delete`, `retry`,
   `retryAll`, `export(to:)`, `import(from:mode:)`, `saveAPIKey`, `setModel`.
 - `ServicesProvider: NSObject` (`@MainActor`):
@@ -642,15 +651,19 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   `NSPasteboard.PasteboardType("NSStringPboardType")`. Порожньо → `error.pointee = "Не вдалося отримати текст"`
   і сповіщення «Нічого не виділено». Інакше одразу повертає керування, а в `Task` викликає
   `ServiceRequestHandler.handle` і `UserNotifier.post(content)`. Залежності (`handler`, `notifier`) — через init.
+  `Task` захоплює `self` **сильно** (провайдер живе весь час роботи застосунку в `AppDelegate`), тому гілки
+  «Services недоступні» немає.
   Точний бриджинг типу параметра `error` (`NSString?` vs `NSString`) — **перевірити компіляцією в CI** (U3).
 - `KeychainSecretStore: SecretStore` — `kSecClassGenericPassword`, `kSecAttrService = "com.vocabapp.VocabApp"`
   (ін'єктується; тести — унікальний), `kSecAttrAccount = SecretKey.rawValue`; `SecItemCopyMatching`/`Add`/`Update`/
   `Delete`; `errSecItemNotFound` → `nil`. `OSStatus` помилки → `SecretStoreError.keychain(status:)` (оголошено в ядрі, `Security/SecretStore.swift`; без значення секрету).
 - `UserNotifier` (протокол, `App/Sources/Platform/UserNotifier.swift`: `func requestAuthorization() async -> Bool`, `func post(_ content: NotificationContent) async`) / `NotificationService` — `UNUserNotificationCenter`; якщо дозволу нема —
-  логуємо й показуємо останній результат у меню (`AppModel.lastServiceMessage`).
-- `LoginItemService` — `SMAppService.mainApp.register()/unregister()/status`; `.requiresApproval` → кнопка
+  логуємо й показуємо останній результат у меню (`AppModel.lastServiceMessage`). Дозвіл запитується **лише на старті**
+  (`AppDelegate`); `post` сам не запитує, а чекає на результат того самого запиту.
+- `LoginItemService: LoginItemManaging` (`state`, `setEnabled(_:) throws`, `openSystemSettings()`; чиста
+  `static func state(for: SMAppService.Status) -> LoginItemState`) — `SMAppService.mainApp.register()/unregister()/status`; `.requiresApproval` → кнопка
   «Відкрити Login Items» (`SMAppService.openSystemSettingsLoginItems()`).
-- `SpeechService` — `AVSpeechSynthesizer`, `AVSpeechUtterance(string:)`, `voice = AVSpeechSynthesisVoice(language: pair.speechLanguageCode)`.
+- `SpeechService: SpeechSpeaking` (`speak(_:languageCode:)`, `stop()`, `makeUtterance(text:languageCode:)`) — `AVSpeechSynthesizer`, `AVSpeechUtterance(string:)`, `voice = AVSpeechSynthesisVoice(language: pair.speechLanguageCode)`.
 - `FilePanels` — `NSSavePanel` (`nameFieldStringValue = "dictionary.json"`, `allowedContentTypes = [.json]`),
   `NSOpenPanel` (`allowedContentTypes = [.json]`, один файл).
 - `NetworkMonitor` — `NWPathMonitor` на власній черзі; при переході в `.satisfied` → `Task { await processor.processAll(ignoringBackoff: true) }`.
