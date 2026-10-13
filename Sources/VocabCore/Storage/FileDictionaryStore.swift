@@ -72,7 +72,7 @@ public final class FileDictionaryStore: DictionaryStoring, Sendable {
     }
 }
 
-/// Атомарний запис довільних даних: `<dir>/.<name>.<UUID>.tmp` → `replaceItem` (або `moveItem`, якщо цілі ще нема).
+/// Атомарний запис довільних даних: `<dir>/.<name>.<UUID>.tmp` → `replaceItem` (rename(2); ціль може не існувати).
 /// При помилці тимчасовий файл видаляється, оригінал лишається незмінним, кидається `StorageError.writeFailed`.
 public enum AtomicFileWriter {
     public static func write(_ data: Data, to target: URL, fileSystem: FileSystem) throws {
@@ -94,12 +94,10 @@ public enum AtomicFileWriter {
             throw StorageError.writeFailed(error.localizedDescription)
         }
 
+        // Завжди `replaceItem` (rename(2)): атомарно і коли ціль існує, і коли її ще нема —
+        // без гонки check-then-act між `fileExists` і `moveItem`.
         do {
-            if fileSystem.fileExists(at: target) {
-                try fileSystem.replaceItem(at: target, withItemAt: tempURL)
-            } else {
-                try fileSystem.moveItem(at: tempURL, to: target)
-            }
+            try fileSystem.replaceItem(at: target, withItemAt: tempURL)
         } catch {
             try? fileSystem.removeItem(at: tempURL)
             throw StorageError.writeFailed(error.localizedDescription)

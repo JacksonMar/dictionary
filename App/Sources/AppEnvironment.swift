@@ -23,4 +23,5 @@ enum AppEnvironment {
 /// Ідентифікатори сцен `Window`.
 enum WindowID {
     static let dictionary = "dictionary"
+    static let settings = "settings"
 }

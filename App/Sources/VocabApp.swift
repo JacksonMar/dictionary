@@ -15,5 +15,12 @@ struct VocabApp: App {
             DictionaryWindowView()
                 .environmentObject(appDelegate.model)
         }
+
+        // Окреме вікно замість `Settings`-сцени: відкривається через `openWindow` на macOS 13 (§11).
+        Window("Налаштування", id: WindowID.settings) {
+            SettingsView()
+                .environmentObject(appDelegate.model)
+        }
+        .windowResizability(.contentSize)
     }
 }

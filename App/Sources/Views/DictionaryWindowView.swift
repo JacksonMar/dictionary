@@ -1,7 +1,7 @@
 import SwiftUI
 import VocabCore
 
-/// Головне вікно: список записів, ручне додавання, редагування, видалення.
+/// Головне вікно: список записів, ручне додавання, редагування, видалення, «Повторити» для pending/failed.
 struct DictionaryWindowView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isAdding = false
@@ -81,12 +81,20 @@ struct DictionaryWindowView: View {
                     List(model.entries) { entry in
                         EntryRowView(
                             entry: entry,
+                            isRetrying: model.retryingIDs.contains(entry.id),
                             onEdit: { editingEntry = entry },
-                            onDelete: { entryPendingDeletion = entry }
+                            onDelete: { entryPendingDeletion = entry },
+                            onRetry: model.isClaudeAvailable ? { retry(entry) } : nil
                         )
                     }
                 }
             }
+        }
+    }
+
+    private func retry(_ entry: Entry) {
+        Task { @MainActor in
+            await model.retry(id: entry.id)
         }
     }
 

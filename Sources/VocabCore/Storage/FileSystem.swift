@@ -11,7 +11,8 @@ public protocol FileSystem: Sendable {
     func readData(at url: URL) throws -> Data
     /// Звичайний (не атомарний) запис — використовується для тимчасового файлу.
     func writeData(_ data: Data, to url: URL) throws
-    /// Атомарна заміна `target` вмістом `temp` (той самий том).
+    /// Атомарна заміна `target` вмістом `temp` (той самий том). Якщо `target` не існує — `temp` просто
+    /// перейменовується в `target`.
     func replaceItem(at target: URL, withItemAt temp: URL) throws
     func moveItem(at source: URL, to destination: URL) throws
     func copyItem(at source: URL, to destination: URL) throws
@@ -38,7 +39,8 @@ public struct LocalFileSystem: FileSystem {
     }
 
     /// Атомарна заміна через `rename(2)`: однаково на macOS і Linux, гарантовано атомарна в межах одного тому
-    /// (дозволена §5 альтернатива `FileManager.replaceItemAt`).
+    /// (дозволена §5 альтернатива `FileManager.replaceItemAt`). Відсутня ціль — не помилка: `rename(2)`
+    /// створює її (POSIX), тож окрема гілка `moveItem` не потрібна.
     public func replaceItem(at target: URL, withItemAt temp: URL) throws {
         let result = temp.withUnsafeFileSystemRepresentation { tempPath -> Int32 in
             target.withUnsafeFileSystemRepresentation { targetPath -> Int32 in

@@ -54,15 +54,21 @@ public final class RedactingLogger: Sendable {
         for secret in secretsProvider() where secret.count >= Self.minimumSecretLength {
             result = result.replacingOccurrences(of: secret, with: Self.redactedMarker)
         }
-        guard let regex = try? NSRegularExpression(pattern: Self.apiKeyPattern) else {
-            return result
+        return Self.redactAPIKeyPattern(result)
+    }
+
+    /// Лише правило (2): `sk-ant-…` → `sk-ant-[REDACTED]`. Використовується й поза логером
+    /// (напр. для тексту помилки від API, що може потрапити в `lastError`).
+    public static func redactAPIKeyPattern(_ message: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: apiKeyPattern) else {
+            return message
         }
-        let range = NSRange(result.startIndex..<result.endIndex, in: result)
+        let range = NSRange(message.startIndex..<message.endIndex, in: message)
         return regex.stringByReplacingMatches(
-            in: result,
+            in: message,
             options: [],
             range: range,
-            withTemplate: "sk-ant-" + NSRegularExpression.escapedTemplate(for: Self.redactedMarker)
+            withTemplate: "sk-ant-" + NSRegularExpression.escapedTemplate(for: redactedMarker)
         )
     }
 
