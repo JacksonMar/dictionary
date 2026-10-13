@@ -32,10 +32,14 @@ public struct ClaudeAPIClient: Sendable {
 
         let status = response.statusCode
         guard (200..<300).contains(status) else {
+            // Текст помилки сервера може потрапити в `lastError`/UI, тож проходить повне редагування:
+            // шаблон `sk-ant-…`, відомі секрети логера і ключ поточного запиту.
+            let logger = self.logger
             let mapped = ClaudeError.from(
                 status: status,
                 retryAfterHeader: response.value(forHTTPHeaderField: "retry-after"),
-                body: data
+                body: data,
+                redact: { Self.redact($0, logger: logger, apiKey: apiKey) }
             )
             logger.error(
                 "Claude request failed: model=\(model) status=\(status) error=\(mapped.logName) "
@@ -45,6 +49,15 @@ public struct ClaudeAPIClient: Sendable {
         }
         logger.info("Claude request ok: model=\(model) status=\(status) duration=\(Self.elapsed(since: started))")
         return data
+    }
+
+    /// Повне редагування тексту, що може вийти за межі клієнта.
+    static func redact(_ text: String, logger: RedactingLogger, apiKey: String) -> String {
+        var result = logger.redact(text)
+        if apiKey.count >= RedactingLogger.minimumSecretLength {
+            result = result.replacingOccurrences(of: apiKey, with: RedactingLogger.redactedMarker)
+        }
+        return result
     }
 
     private static func elapsed(since start: Date) -> String {

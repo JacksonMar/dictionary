@@ -12,6 +12,9 @@ public actor PendingQueueProcessor {
     private var attempts: [UUID: Int] = [:]
     private var nextAttemptAt: [UUID: Date] = [:]
     private var inFlight: Set<UUID> = []
+    /// Записи, що вичерпали `maxAttempts`, але лишилися `pending`, бо статус `failed` не вдалося зберегти
+    /// (помилка запису на диск). Авто-повтори для них зупинено до ручного «Повторити» або перезапуску.
+    private var exhausted: Set<UUID> = []
     private var isRunning = false
 
     public init(
@@ -45,6 +48,9 @@ public actor PendingQueueProcessor {
             .map(\.id)
         var results: [ProcessingResult] = []
         for id in candidates {
+            if exhausted.contains(id) {
+                continue
+            }
             if !ignoringBackoff, let due = nextAttemptAt[id], due > dateProvider.now() {
                 continue
             }
@@ -74,6 +80,7 @@ public actor PendingQueueProcessor {
         }
         attempts[entryID] = nil
         nextAttemptAt[entryID] = nil
+        exhausted.remove(entryID)
         return await processOne(entryID)
     }
 
@@ -102,6 +109,10 @@ public actor PendingQueueProcessor {
                 let count = previous + 1
                 attempts[id] = count
                 nextAttemptAt[id] = dateProvider.now().addingTimeInterval(policy.delay(forAttempt: count, error: error))
+                if count >= policy.maxAttempts {
+                    // Ліміт вичерпано, а запис досі pending (не вдалося зберегти `failed`) — більше не повторюємо.
+                    exhausted.insert(id)
+                }
             } else {
                 // offline / немає ключа: без лічильника, наступна спроба — за першим тригером.
                 nextAttemptAt[id] = nil
@@ -109,6 +120,7 @@ public actor PendingQueueProcessor {
         case .ready, .failed, .notFound:
             attempts[id] = nil
             nextAttemptAt[id] = nil
+            exhausted.remove(id)
         case .skipped:
             break
         }

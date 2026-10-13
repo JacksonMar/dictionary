@@ -1,7 +1,8 @@
 import SwiftUI
 import VocabCore
 
-/// Головне вікно: список записів, ручне додавання, редагування, видалення, «Повторити» для pending/failed.
+/// Головне вікно: список записів, ручне додавання, редагування, видалення, «Повторити» для pending/failed,
+/// «Повторити всі» (якщо є pending/failed записи).
 struct DictionaryWindowView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isAdding = false
@@ -12,6 +13,23 @@ struct DictionaryWindowView: View {
         content
             .frame(minWidth: 560, minHeight: 420)
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    if model.isClaudeAvailable && model.hasRetryableEntries {
+                        if model.isRetryingAll {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Button {
+                                Task { @MainActor in
+                                    await model.retryAll()
+                                }
+                            } label: {
+                                Label("Повторити всі", systemImage: "arrow.clockwise")
+                            }
+                            .help("Повторити запит до Claude для всіх записів, що очікують обробки або з помилкою")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         isAdding = true

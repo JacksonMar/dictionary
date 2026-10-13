@@ -1,25 +1,30 @@
 import Foundation
 import VocabCore
 
-/// Потокобезпечний кеш поточного API-ключа — джерело `secretsProvider` для `RedactingLogger`
-/// (щоб не читати Keychain на кожен рядок логу).
+/// Потокобезпечний кеш API-ключів — джерело `secretsProvider` для `RedactingLogger`
+/// (щоб не читати Keychain на кожен рядок логу). Ключі **накопичуються** до перезапуску: після заміни
+/// чи видалення ключа старий і далі вирізається з логів і текстів помилок.
 final class APIKeyCache: @unchecked Sendable {
     private let lock = NSLock()
-    private var value: String?
+    private var values: Set<String> = []
 
     init() {}
 
+    /// Додає ключ до множини відомих секретів; `nil`/порожній рядок ігнорується (нічого не видаляє).
     func set(_ newValue: String?) {
+        guard let newValue, !newValue.isEmpty else { return }
         lock.lock()
         defer { lock.unlock() }
-        value = newValue
+        values.insert(newValue)
     }
 
-    /// Поточні секрети для редагування логів.
+    /// Усі відомі секрети для редагування логів (довші першими, щоб ключ-префікс не лишив хвіст іншого).
     func secrets() -> [String] {
         lock.lock()
         defer { lock.unlock() }
-        return value.map { [$0] } ?? []
+        return values.sorted { lhs, rhs in
+            lhs.count != rhs.count ? lhs.count > rhs.count : lhs < rhs
+        }
     }
 }
 
@@ -31,6 +36,7 @@ struct ClaudeServices {
     let logger: RedactingLogger
     let queue: PendingQueueProcessor
     let addWord: AddWordUseCase
+    let serviceHandler: ServiceRequestHandler
 
     static func make(
         repository: DictionaryRepository,
@@ -49,7 +55,8 @@ struct ClaudeServices {
             repository: repository,
             lookup: lookup,
             registry: registry,
-            dateProvider: dateProvider
+            dateProvider: dateProvider,
+            logger: logger
         )
         let queue = PendingQueueProcessor(
             repository: repository,
@@ -58,13 +65,15 @@ struct ClaudeServices {
             dateProvider: dateProvider
         )
         let addWord = AddWordUseCase(repository: repository, processor: queue, settings: settings, registry: registry)
+        let serviceHandler = ServiceRequestHandler(useCase: addWord)
         return ClaudeServices(
             secrets: secrets,
             settings: settings,
             keyCache: keyCache,
             logger: logger,
             queue: queue,
-            addWord: addWord
+            addWord: addWord,
+            serviceHandler: serviceHandler
         )
     }
 }
@@ -92,6 +101,10 @@ final class AppModel: ObservableObject {
     @Published var settingsError: String?
     /// Записи, для яких зараз виконується «Повторити».
     @Published private(set) var retryingIDs: Set<UUID> = []
+    /// Іде «Повторити всі».
+    @Published private(set) var isRetryingAll = false
+    /// Текст останнього результату Services — показується в меню (видно й тоді, коли сповіщення заборонені).
+    @Published var lastServiceMessage: String?
 
     let languagePairID: String
     private let repository: DictionaryRepository
@@ -221,9 +234,30 @@ final class AppModel: ObservableObject {
         return result
     }
 
-    /// «Повторити всі»: усі pending-записи без очікування backoff.
+    /// «Повторити всі»: усі pending-записи без очікування backoff, далі кожен `failed` (як кнопка «Повторити»:
+    /// скидає лічильник спроб).
     func retryAll() async {
-        await processPending()
+        guard let claude, !isRetryingAll else { return }
+        isRetryingAll = true
+        defer { isRetryingAll = false }
+        await claude.queue.processAll(ignoringBackoff: true)
+        let failedIDs = await repository.allEntries().filter { $0.status == .failed }.map(\.id)
+        for id in failedIDs where !retryingIDs.contains(id) {
+            retryingIDs.insert(id)
+            _ = await claude.queue.retry(entryID: id)
+            retryingIDs.remove(id)
+        }
+        apply(await repository.allEntries())
+    }
+
+    /// Є записи, які можна повторити (`pending` або `failed`).
+    var hasRetryableEntries: Bool {
+        entries.contains { $0.status != .ready }
+    }
+
+    /// Результат Services (§11): текст для меню.
+    func recordServiceResponse(_ response: ServiceResponse) {
+        lastServiceMessage = response.notification.singleLine
     }
 
     /// Обробка всіх pending-записів (старт, відновлення мережі, новий ключ/модель).
@@ -273,7 +307,8 @@ final class AppModel: ObservableObject {
             settingsError = "Не вдалося видалити ключ: \(Self.secretErrorMessage(error))"
             return false
         }
-        // Кеш для редагування логів не очищаємо: старий ключ і далі вирізається з логів до перезапуску.
+        // Кеш для редагування логів не очищаємо: ключі в ньому накопичуються, тож видалений ключ і далі
+        // вирізається з логів до перезапуску.
         hasAPIKey = false
         settingsError = nil
         claude.logger.info("API key deleted")

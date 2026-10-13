@@ -20,17 +20,21 @@ public final class EntryProcessor: Sendable {
     private let lookup: WordLookupService
     private let registry: LanguagePairRegistry
     private let dateProvider: DateProvider
+    private let logger: RedactingLogger?
 
+    /// - Parameter logger: куди логувати невдалі збереження (повідомлення редагуються); `nil` — не логувати.
     public init(
         repository: DictionaryRepository,
         lookup: WordLookupService,
         registry: LanguagePairRegistry,
-        dateProvider: DateProvider
+        dateProvider: DateProvider,
+        logger: RedactingLogger? = nil
     ) {
         self.repository = repository
         self.lookup = lookup
         self.registry = registry
         self.dateProvider = dateProvider
+        self.logger = logger
     }
 
     /// - Parameters:
@@ -51,8 +55,7 @@ public final class EntryProcessor: Sendable {
         guard let pair = registry.pair(id: entry.languagePair) else {
             // Окремого випадку в `ClaudeError` нема; постійна помилка → `failed`, текст — «Невідома мовна пара».
             let error = ClaudeError.badRequest(status: 0, message: Self.unknownPairMessage)
-            let updated = await store(entry, status: .failed, lastError: Self.unknownPairMessage)
-            return .failed(updated, error)
+            return await persist(entry, error: error, status: .failed, lastError: Self.unknownPairMessage)
         }
 
         let text = TextNormalizer.clean(entry.word)
@@ -70,13 +73,7 @@ public final class EntryProcessor: Sendable {
             guard current.status != .ready else {
                 return .skipped(current)
             }
-            let updated = await store(current, status: disposition.status, lastError: claudeError.userMessage)
-            switch disposition.status {
-            case .failed:
-                return .failed(updated, claudeError)
-            case .pending, .ready:
-                return .pending(updated, claudeError)
-            }
+            return await persist(current, error: claudeError, status: disposition.status, lastError: claudeError.userMessage)
         }
     }
 
@@ -104,22 +101,66 @@ public final class EntryProcessor: Sendable {
         do {
             return .ready(try await repository.update(entry))
         } catch {
-            // Не вдалося зберегти (диск/дубль) — запис лишається pending, наступна спроба пізніше.
-            let message = (error as? RepositoryError)?.userMessage ?? error.localizedDescription
-            let current = await repository.entry(id: entryID) ?? entry
-            return .pending(current, .transport(message))
+            // Не вдалося зберегти (диск/дубль): у репозиторії лишився попередній стан запису.
+            let message = saveFailureMessage(error)
+            logger?.error("Entry save failed: id=\(entryID.uuidString) status=ready error=\(message)")
+            guard let current = await repository.entry(id: entryID) else {
+                return .notFound(entryID)
+            }
+            return resultForUnsavedEntry(current, message: message)
         }
     }
 
-    /// Зберігає статус і `lastError`; при помилці збереження повертає запис без змін.
-    private func store(_ entry: Entry, status: EntryStatus, lastError: String) async -> Entry {
+    /// Зберігає статус і `lastError` і повертає результат, що відповідає **збереженому** стану.
+    /// Якщо збереження не вдалося:
+    /// - збережений `failed` (повтор failed-запису) → `.failed(збережений, .transport(…))`;
+    /// - збережений `ready` (заповнено паралельно) → `.skipped(збережений)`;
+    /// - збережений `pending` і бажаний `pending` (втрачено лише `lastError`) → `.pending(збережений, error)`
+    ///   з початковою помилкою, тож лічильник спроб поводиться як завжди;
+    /// - збережений `pending`, а бажаний `failed` → `.pending(збережений, .transport(…))`: черга рахує спробу
+    ///   з backoff і після `maxAttempts` перестає авто-повторювати запис (див. `PendingQueueProcessor`).
+    private func persist(_ entry: Entry, error: ClaudeError, status: EntryStatus, lastError: String) async -> ProcessingResult {
         var updated = entry
         updated.status = status
         updated.lastError = lastError
         do {
-            return try await repository.update(updated)
-        } catch {
-            return entry
+            let saved = try await repository.update(updated)
+            switch saved.status {
+            case .failed:
+                return .failed(saved, error)
+            case .pending, .ready:
+                return .pending(saved, error)
+            }
+        } catch let saveError {
+            let message = saveFailureMessage(saveError)
+            logger?.error(
+                "Entry save failed: id=\(entry.id.uuidString) status=\(status.rawValue) error=\(message)"
+            )
+            guard let current = await repository.entry(id: entry.id) else {
+                return .notFound(entry.id)
+            }
+            if current.status == .pending && status == .pending {
+                return .pending(current, error)
+            }
+            return resultForUnsavedEntry(current, message: message)
         }
+    }
+
+    /// Результат за збереженим станом запису, коли нові дані записати не вдалося.
+    private func resultForUnsavedEntry(_ current: Entry, message: String) -> ProcessingResult {
+        let error = ClaudeError.transport(message)
+        switch current.status {
+        case .ready:
+            return .skipped(current)
+        case .failed:
+            return .failed(current, error)
+        case .pending:
+            return .pending(current, error)
+        }
+    }
+
+    private func saveFailureMessage(_ error: Error) -> String {
+        let message = (error as? RepositoryError)?.userMessage ?? error.localizedDescription
+        return "не вдалося зберегти запис: \(message)"
     }
 }

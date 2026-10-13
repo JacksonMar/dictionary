@@ -114,8 +114,14 @@ extension ClaudeError {
     }
 
     /// HTTP-статус поза 2xx → `ClaudeError`. `retryAfter` — значення заголовка `retry-after`,
-    /// `body` — тіло відповіді (для `message` у `badRequest`).
-    public static func from(status: Int, retryAfterHeader: String?, body: Data) -> ClaudeError {
+    /// `body` — тіло відповіді (для `message` у `badRequest`). `redact` — додаткове редагування тексту помилки
+    /// (у клієнті — повне редагування `RedactingLogger`: відомі секрети + шаблон), до обрізання до 200 символів.
+    public static func from(
+        status: Int,
+        retryAfterHeader: String?,
+        body: Data,
+        redact: (String) -> String = { $0 }
+    ) -> ClaudeError {
         switch status {
         case 401:
             return .unauthorized
@@ -126,7 +132,7 @@ extension ClaudeError {
         case 500...599:
             return .server(status: status)
         case 400...499:
-            return .badRequest(status: status, message: errorMessage(from: body))
+            return .badRequest(status: status, message: errorMessage(from: body, redact: redact))
         default:
             return .transport("HTTP \(status)")
         }
@@ -142,16 +148,17 @@ extension ClaudeError {
     }
 
     /// `error.message` з тіла `{"type":"error","error":{"type","message"}}`, обрізане до 200 символів;
-    /// шаблон ключа `sk-ant-…` вирізається. Інакше — порожній рядок.
-    static func errorMessage(from body: Data) -> String {
+    /// шаблон ключа `sk-ant-…` вирізається, далі застосовується `redact` (до обрізання, щоб не лишити
+    /// фрагмент секрету на межі). Інакше — порожній рядок.
+    static func errorMessage(from body: Data, redact: (String) -> String = { $0 }) -> String {
         guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
               let error = object["error"] as? [String: Any],
               let message = error["message"] as? String else {
             return ""
         }
-        let redacted = RedactingLogger.redactAPIKeyPattern(
+        let redacted = redact(RedactingLogger.redactAPIKeyPattern(
             message.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
+        ))
         return String(redacted.prefix(maxErrorMessageLength))
     }
 }

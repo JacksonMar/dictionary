@@ -8,6 +8,7 @@ struct VocabApp: App {
     var body: some Scene {
         MenuBarExtra("Словник", systemImage: "character.book.closed") {
             MenuBarContentView()
+                .environmentObject(appDelegate.model)
         }
         .menuBarExtraStyle(.menu)
 
