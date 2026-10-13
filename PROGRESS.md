@@ -8,7 +8,7 @@
 | M2 — Claude API | done | 1 | PASS (ітерація 1) |
 | M3 — Services | done | 1 | PASS (ітерація 1) |
 | M4 — Експорт/імпорт | done | 1 | PASS (ітерація 1) |
-| M5 — Полірування | in progress | 1 | – |
+| M5 — Полірування | blocked (CI) | 1 | FAIL — лише через відсутність macOS CI для нових тестів |
 
 ## Середовище перевірки
 
@@ -47,6 +47,13 @@
 - Linux: 317 тестів, 0 падінь. macOS CI (run 38434434649): `xcodebuild build` ✅, `xcodebuild test` ✅ (50 тестів, зокрема AppModelTransferTests 17), `swift test` на macOS ✅.
 - Неблокуючі зауваження (на M5): «..» і англомовна системна причина в `readFailed`/`storage`; імпортоване слово не очищається; ready-запис з `[""]` приймається; кількість записів у повідомленні експорту з окремого знімка; синхронізувати §10 ARCHITECTURE з новими API.
 - ⏳ `docs/manual-tests/M4.md` — перевірка панелей на Mac.
+
+### M5 — ітерація 1: FAIL (інфраструктура, не код)
+- Linux: 354 тести, 0 падінь. Увесь виробничий код M5 зібрано й протестовано на macOS у run 38436944130 (коміт df958a1): `xcodebuild build` ✅, `xcodebuild test` ✅.
+- Коміт 91a651c додав лише тести (21 новий тест застосунку: AppModelM5Tests, LoginItemServiceTests, SpeechServiceTests). Run 38468460084 не отримав жодного раннера (runner_id 0, жодного кроку, навіть для Linux-job); повторний запуск через інтеграцію → 403. Найімовірніше, вичерпано ліміт хвилин / spending limit GitHub Actions (macOS-хвилини рахуються з множником).
+- Judge: блокуючих дефектів у коді немає; усі відкладені зауваження M2–M4 виправлено; README повний. Для PASS потрібен зелений macOS CI з новими тестами.
+- Що зробити: відновити GitHub Actions (Settings → Billing / spending limit) і перезапустити CI (Actions → CI → Re-run) або локально на Mac: `xcodegen generate && xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-`.
+- ⏳ `docs/manual-tests/M5.md` — menu bar, автозапуск, озвучення на реальному Mac.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
