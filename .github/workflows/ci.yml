@@ -15,7 +15,15 @@ jobs:
         if: hashFiles('Package.swift') != ''
         run: swift test
 
-  macos:
+  macos-core:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core package tests (macOS)
+        if: hashFiles('Package.swift') != ''
+        run: swift test
+
+  macos-app:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +31,6 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
-      - name: Core package tests (macOS)
-        if: hashFiles('Package.swift') != ''
-        run: swift test
       - name: Install XcodeGen
         if: hashFiles('project.yml') != ''
         run: brew install xcodegen

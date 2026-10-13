@@ -1,0 +1,44 @@
+name: VocabApp
+options:
+  bundleIdPrefix: com.vocabapp
+  deploymentTarget: { macOS: "13.0" }
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+packages:
+  VocabCore: { path: . }
+targets:
+  VocabApp:
+    type: application
+    platform: macOS
+    sources: [App/Sources]
+    settings:
+      base:
+        PRODUCT_NAME: VocabApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.vocabapp.VocabApp
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_APP_SANDBOX: NO
+    dependencies:
+      - package: VocabCore
+        product: VocabCore
+  VocabAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [App/Tests]
+    settings:
+      base: { GENERATE_INFOPLIST_FILE: YES, PRODUCT_BUNDLE_IDENTIFIER: com.vocabapp.VocabAppTests }
+    dependencies:
+      - target: VocabApp          # hosted tests: TEST_HOST = VocabApp.app
+schemes:
+  VocabApp:
+    build:
+      targets: { VocabApp: all, VocabAppTests: [test] }
+    test:
+      config: Debug
+      targets: [VocabAppTests]
