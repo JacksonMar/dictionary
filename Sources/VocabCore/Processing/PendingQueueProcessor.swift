@@ -129,6 +129,11 @@ public actor PendingQueueProcessor {
             attempts[id] = nil
             nextAttemptAt[id] = nil
             exhausted.remove(id)
+        case .duplicate(_, let removedID):
+            // M7 (D27): запис видалено як дубль — стан спроб більше не потрібен (`inFlight` чистить `defer`).
+            attempts[removedID] = nil
+            nextAttemptAt[removedID] = nil
+            exhausted.remove(removedID)
         case .skipped:
             break
         }

@@ -33,34 +33,43 @@ public final class ClaudeLookupService: WordLookupService {
 
     public func lookup(text: String, kind: SelectionKind, pair: LanguagePair) async throws -> LookupResult {
         let apiKey = try readAPIKey()
-        var configuration = baseConfiguration
-        configuration.model = settings.model
+        let configuration = currentConfiguration()
 
+        // M7: для пари з `renderings` — комбінований промт (усі мови одним запитом, §7.7).
         let prompt = PromptBuilder.build(text: text, kind: kind, pair: pair)
+        let parse: (Data) throws -> LookupResult = { data in
+            try LookupResponseParser.parseMessagesResponse(
+                data,
+                kind: kind,
+                pair: pair,
+                selectionKey: TextNormalizer.key(text)
+            )
+        }
         do {
-            return try await attempt(prompt: prompt, kind: kind, apiKey: apiKey, configuration: configuration)
+            return try await attempt(prompt: prompt, apiKey: apiKey, configuration: configuration, parse: parse)
         } catch ClaudeError.invalidResponse(let reason) {
             logger.info("Claude response invalid (\(reason)); retrying once")
             return try await attempt(
                 prompt: PromptBuilder.retrying(prompt),
-                kind: kind,
                 apiKey: apiKey,
-                configuration: configuration
+                configuration: configuration,
+                parse: parse
             )
         }
     }
 
     // MARK: - Private
 
-    private func attempt(
+    /// Один HTTP-запит + розбір відповіді. Помилка розбору логується (лише тип) і передається нагору.
+    func attempt<T>(
         prompt: BuiltPrompt,
-        kind: SelectionKind,
         apiKey: String,
-        configuration: ClaudeConfiguration
-    ) async throws -> LookupResult {
+        configuration: ClaudeConfiguration,
+        parse: (Data) throws -> T
+    ) async throws -> T {
         let data = try await client.send(prompt: prompt, apiKey: apiKey, configuration: configuration)
         do {
-            return try LookupResponseParser.parseMessagesResponse(data, kind: kind)
+            return try parse(data)
         } catch let error as ClaudeError {
             logger.error("Claude response rejected: model=\(configuration.model) error=\(error.logName)")
             throw error
@@ -69,7 +78,14 @@ public final class ClaudeLookupService: WordLookupService {
         }
     }
 
-    private func readAPIKey() throws -> String {
+    /// Конфігурація поточного виклику: модель — з налаштувань.
+    func currentConfiguration() -> ClaudeConfiguration {
+        var configuration = baseConfiguration
+        configuration.model = settings.model
+        return configuration
+    }
+
+    func readAPIKey() throws -> String {
         let stored: String?
         do {
             stored = try secrets.readSecret(for: .anthropicAPIKey)

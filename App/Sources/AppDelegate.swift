@@ -80,7 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             loginItems: loginItems,
             speech: speech,
             // `settings` не передаємо: `AppModel` бере `claude.settings` — одне джерело істини (M6).
-            appearanceApplier: appearanceApplier
+            appearanceApplier: appearanceApplier,
+            // M7: доповнення варіантів тим самим `ClaudeLookupService` (ключ, модель, логер).
+            variantBackfill: claude.variantBackfill
         )
 
         self.paths = paths

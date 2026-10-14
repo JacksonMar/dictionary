@@ -9,6 +9,11 @@ public struct LookupResult: Equatable, Sendable {
     public var transcription: String
     public var translations: [String]
     public var example: Example
+    /// M7: визначена мова виділення (`source_language`, §7.7) — код мови пари або id мови відображення.
+    /// `nil` для пари без `renderings` (поведінка M2) і у вкладених результатах.
+    public var sourceLanguage: String?
+    /// M7: провалідовані відображення за id мови (`"it"`); порожньо для пари без `renderings` і у вкладених.
+    public var variants: [String: LookupResult]
 
     public init(
         word: String,
@@ -16,7 +21,9 @@ public struct LookupResult: Equatable, Sendable {
         partOfSpeech: String,
         transcription: String,
         translations: [String],
-        example: Example
+        example: Example,
+        sourceLanguage: String? = nil,
+        variants: [String: LookupResult] = [:]
     ) {
         self.word = word
         self.lemma = lemma
@@ -24,6 +31,8 @@ public struct LookupResult: Equatable, Sendable {
         self.transcription = transcription
         self.translations = translations
         self.example = example
+        self.sourceLanguage = sourceLanguage
+        self.variants = variants
     }
 }
 
@@ -42,17 +51,39 @@ public struct MessagesResponseText: Equatable, Sendable {
 public enum LookupResponseParser {
     public static let phrasePartOfSpeech = "phrase"
     public static let maxTranslations = 10
+    /// Причина `.invalidResponse` для відповіді, обрізаної через `max_tokens` (§7.4, §7.7).
+    public static let maxTokensReason = "max_tokens"
 
     /// Повний розбір тіла відповіді Messages API: конверт → текст → JSON → `LookupResult`.
     /// `stop_reason == "refusal"` → `.refused`; `stop_reason == "max_tokens"` з текстом, що не проходить
     /// валідацію → `.invalidResponse("max_tokens")`; повна валідна відповідь при `max_tokens` приймається.
     public static func parseMessagesResponse(_ data: Data, kind: SelectionKind) throws -> LookupResult {
         let response = try extract(fromMessagesResponse: data)
+        return try rethrowingTruncation(stopReason: response.stopReason) {
+            try parse(response.text, kind: kind)
+        }
+    }
+
+    /// M7: те саме для комбінованої відповіді пари (`parse(_:kind:pair:selectionKey:)`).
+    public static func parseMessagesResponse(
+        _ data: Data,
+        kind: SelectionKind,
+        pair: LanguagePair,
+        selectionKey: String
+    ) throws -> LookupResult {
+        let response = try extract(fromMessagesResponse: data)
+        return try rethrowingTruncation(stopReason: response.stopReason) {
+            try parse(response.text, kind: kind, pair: pair, selectionKey: selectionKey)
+        }
+    }
+
+    /// Помилка розбору при `stop_reason == "max_tokens"` → `.invalidResponse(maxTokensReason)`.
+    static func rethrowingTruncation<T>(stopReason: String?, _ body: () throws -> T) throws -> T {
         do {
-            return try parse(response.text, kind: kind)
+            return try body()
         } catch {
-            if response.stopReason == "max_tokens" {
-                throw ClaudeError.invalidResponse("max_tokens")
+            if stopReason == "max_tokens" {
+                throw ClaudeError.invalidResponse(maxTokensReason)
             }
             throw error
         }
@@ -87,8 +118,82 @@ public enum LookupResponseParser {
 
     /// Розбір і валідація тексту моделі. Для `.phrase` `partOfSpeech` примусово `"phrase"`.
     public static func parse(_ text: String, kind: SelectionKind) throws -> LookupResult {
-        let object = try jsonObject(in: text)
+        try parseObject(try jsonObject(in: text), kind: kind)
+    }
 
+    /// M7 (§7.7): комбінована відповідь з детекцією мови. Пара без `renderings` → `parse(_:kind:)` (M2).
+    /// 1. Верхній рівень валідується як у M2 (невалідний → `.invalidResponse`).
+    /// 2. `source_language` з допустимого набору береться; інакше/відсутній — виводиться: виділення збігається
+    ///    з `word` варіанта `x`, але не з верхнім `word` → `x`, інакше код мови пари.
+    /// 3. Кожен `variants.<id>` для мов пари валідується тими ж правилами; невалідний/відсутній просто не
+    ///    потрапляє в результат — **крім** варіанта мови виділення (тоді вся відповідь невалідна).
+    /// 4. Невідомі id у `variants` ігноруються.
+    /// - Parameter selectionKey: `TextNormalizer.key` виділеного тексту.
+    public static func parse(
+        _ text: String,
+        kind: SelectionKind,
+        pair: LanguagePair,
+        selectionKey: String
+    ) throws -> LookupResult {
+        guard !pair.renderings.isEmpty else {
+            return try parse(text, kind: kind)
+        }
+        let object = try jsonObject(in: text)
+        var result = try parseObject(object, kind: kind)
+
+        let rawVariants = object["variants"] as? [String: Any] ?? [:]
+        var variants: [String: LookupResult] = [:]
+        for rendering in pair.renderings {
+            guard let variantObject = rawVariants[rendering.id] as? [String: Any],
+                  let variant = try? parseObject(variantObject, kind: kind) else {
+                continue
+            }
+            variants[rendering.id] = variant
+        }
+
+        let allowed = pair.allowedSourceLanguages
+        let declared = (object["source_language"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let sourceLanguage: String
+        if let declared, allowed.contains(declared) {
+            sourceLanguage = declared
+        } else {
+            sourceLanguage = inferredSourceLanguage(
+                topWord: result.word,
+                variants: variants,
+                pair: pair,
+                selectionKey: selectionKey
+            )
+        }
+        if sourceLanguage != pair.sourceLanguageCode && variants[sourceLanguage] == nil {
+            throw ClaudeError.invalidResponse("немає коректного варіанта мови виділення (\(sourceLanguage))")
+        }
+        result.sourceLanguage = sourceLanguage
+        result.variants = variants
+        return result
+    }
+
+    /// Мова виділення без (коректного) `source_language`: збіг ключа виділення з варіантом, але не з верхнім рівнем.
+    private static func inferredSourceLanguage(
+        topWord: String,
+        variants: [String: LookupResult],
+        pair: LanguagePair,
+        selectionKey: String
+    ) -> String {
+        guard TextNormalizer.key(topWord) != selectionKey else {
+            return pair.sourceLanguageCode
+        }
+        for rendering in pair.renderings {
+            if let variant = variants[rendering.id], TextNormalizer.key(variant.word) == selectionKey {
+                return rendering.id
+            }
+        }
+        return pair.sourceLanguageCode
+    }
+
+    /// Валідація одного об'єкта відповіді (верхній рівень, варіант або елемент пакета) за правилами §7.4.
+    static func parseObject(_ object: [String: Any], kind: SelectionKind) throws -> LookupResult {
         let word = try requiredString(object, "word")
         let partOfSpeech = try requiredString(object, "part_of_speech")
 

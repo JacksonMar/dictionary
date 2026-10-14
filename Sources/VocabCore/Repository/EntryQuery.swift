@@ -15,13 +15,19 @@ public enum EntrySort: String, CaseIterable, Sendable {
 /// Пошук: підрядок `searchText` (після trim) без урахування регістру й діакритики
 /// (`.caseInsensitive, .diacriticInsensitive`) у `word`, `lemma` або будь-якому з `translations`.
 /// Порожній запит → усі записи.
+///
+/// M7: `languageID` — активна мова відображення (`nil` = мова джерела). Пошук і алфавіт працюють по
+/// `EntryDisplay.make(entry, languageID:)`; для fallback-рядків (варіант не ready) пошук — по англійських
+/// `word`/`lemma`/`translations`, щоб запис не «зникав».
 public struct EntryQuery: Equatable, Sendable {
     public var searchText: String
     public var sort: EntrySort
+    public var languageID: String?
 
-    public init(searchText: String = "", sort: EntrySort = .dateNewest) {
+    public init(searchText: String = "", sort: EntrySort = .dateNewest, languageID: String? = nil) {
         self.searchText = searchText
         self.sort = sort
+        self.languageID = languageID
     }
 
     /// Відфільтровані й відсортовані записи.
@@ -33,13 +39,22 @@ public struct EntryQuery: Equatable, Sendable {
     public func matches(_ entry: Entry) -> Bool {
         let needle = normalizedSearchText
         guard !needle.isEmpty else { return true }
-        if Self.contains(entry.word, needle) {
+        let display = EntryDisplay.make(entry, languageID: languageID)
+        let word = display.isFallback ? entry.word : display.word
+        let lemma = display.isFallback ? entry.lemma : display.lemma
+        let translations = display.isFallback ? entry.translations : display.translations
+        if Self.contains(word, needle) {
             return true
         }
-        if let lemma = entry.lemma, Self.contains(lemma, needle) {
+        if let lemma, Self.contains(lemma, needle) {
             return true
         }
-        return entry.translations.contains { Self.contains($0, needle) }
+        return translations.contains { Self.contains($0, needle) }
+    }
+
+    /// Слово, за яким сортується запис в активній мові.
+    private func sortWord(_ entry: Entry) -> String {
+        EntryDisplay.make(entry, languageID: languageID).word
     }
 
     /// `searchText` без крайніх пробілів.
@@ -61,18 +76,18 @@ public struct EntryQuery: Equatable, Sendable {
                 if lhs.createdAt != rhs.createdAt {
                     return lhs.createdAt > rhs.createdAt
                 }
-                return Self.alphabeticalOrder(lhs, rhs)
+                return alphabeticalOrder(lhs, rhs)
             }
         case .dateOldest:
             return entries.sorted { lhs, rhs in
                 if lhs.createdAt != rhs.createdAt {
                     return lhs.createdAt < rhs.createdAt
                 }
-                return Self.alphabeticalOrder(lhs, rhs)
+                return alphabeticalOrder(lhs, rhs)
             }
         case .alphabetical:
             // Ключі обчислюються один раз (`clean` не безкоштовний).
-            let keyed = entries.map { (key: TextNormalizer.key($0.word), entry: $0) }
+            let keyed = entries.map { (key: TextNormalizer.key(sortWord($0)), entry: $0) }
             return keyed.sorted { lhs, rhs in
                 if lhs.key != rhs.key {
                     return lhs.key < rhs.key
@@ -87,9 +102,9 @@ public struct EntryQuery: Equatable, Sendable {
     }
 
     /// Тай-брейк для однакових дат: ключ слова, далі `id` (стабільний, детермінований порядок).
-    private static func alphabeticalOrder(_ lhs: Entry, _ rhs: Entry) -> Bool {
-        let lhsKey = TextNormalizer.key(lhs.word)
-        let rhsKey = TextNormalizer.key(rhs.word)
+    private func alphabeticalOrder(_ lhs: Entry, _ rhs: Entry) -> Bool {
+        let lhsKey = TextNormalizer.key(sortWord(lhs))
+        let rhsKey = TextNormalizer.key(sortWord(rhs))
         if lhsKey != rhsKey {
             return lhsKey < rhsKey
         }

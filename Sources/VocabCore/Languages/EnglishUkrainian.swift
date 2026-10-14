@@ -1,7 +1,9 @@
 import Foundation
 
 extension LanguagePair {
-    /// Англійська → українська.
+    /// Англійська → українська. M7: з італійським відображенням (`renderings: [.italian]`, §3.2).
+    /// Текст шаблонів — як у M2; для пари з `renderings` `PromptBuilder` сам додає вимогу додаткових ключів і
+    /// мовно-нейтральні формулювання (§7.7), тож пара без `renderings` з цими шаблонами дає рівно промт M2.
     public static let englishUkrainian = LanguagePair(
         id: "en-uk",
         sourceLanguageName: "English",
@@ -43,6 +45,9 @@ extension LanguagePair {
             It is a phrase, so "part_of_speech" must be "phrase".
             <text>{{TEXT}}</text>
             """
-        )
+        ),
+        sourceLanguageCode: "en",
+        sourceShortTitle: "EN",
+        renderings: [.italian]
     )
 }

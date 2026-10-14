@@ -11,6 +11,18 @@ public protocol SettingsStore: AnyObject, Sendable {
     /// Записів на сторінці в головному вікні (M6); значення поза `Pagination.pageSizeOptions` →
     /// `Pagination.defaultPageSize`.
     var pageSize: Int { get set }
+    /// M7: активна мова відображення (id мови варіанта, напр. `"it"`); `nil` = мова джерела пари («EN»).
+    /// Сховище лише зберігає рядок (порожній → `nil`); перевірка «невідома для пари» — в `AppModel`.
+    var displayLanguageID: String? { get set }
+}
+
+extension SettingsStore {
+    /// Реалізація за замовчуванням для сторонніх сховищ (напр. тестові дублі M6): режим мови джерела, запис
+    /// ігнорується. `UserDefaultsSettingsStore` і `InMemorySettingsStore` зберігають значення.
+    public var displayLanguageID: String? {
+        get { nil }
+        set { _ = newValue }
+    }
 }
 
 public enum SettingsDefaults {
@@ -24,6 +36,7 @@ public final class UserDefaultsSettingsStore: SettingsStore, @unchecked Sendable
     public static let languagePairKey = "languagePairID"
     public static let appearanceKey = "appearance"
     public static let pageSizeKey = "entriesPageSize"
+    public static let displayLanguageKey = "displayLanguage"
 
     private let defaults: UserDefaults
 
@@ -54,6 +67,11 @@ public final class UserDefaultsSettingsStore: SettingsStore, @unchecked Sendable
         set { defaults.set(Pagination.normalizedPageSize(newValue), forKey: Self.pageSizeKey) }
     }
 
+    public var displayLanguageID: String? {
+        get { Self.normalized(defaults.string(forKey: Self.displayLanguageKey)) }
+        set { store(Self.normalized(newValue), forKey: Self.displayLanguageKey) }
+    }
+
     private func store(_ value: String?, forKey key: String) {
         if let value {
             defaults.set(value, forKey: key)
@@ -78,17 +96,20 @@ public final class InMemorySettingsStore: SettingsStore, @unchecked Sendable {
     private var storedLanguagePairID: String?
     private var storedAppearance: AppAppearance
     private var storedPageSize: Int
+    private var storedDisplayLanguageID: String?
 
     public init(
         model: String? = nil,
         languagePairID: String? = nil,
         appearance: AppAppearance = .system,
-        pageSize: Int = Pagination.defaultPageSize
+        pageSize: Int = Pagination.defaultPageSize,
+        displayLanguageID: String? = nil
     ) {
         self.storedModel = model
         self.storedLanguagePairID = languagePairID
         self.storedAppearance = appearance
         self.storedPageSize = Pagination.normalizedPageSize(pageSize)
+        self.storedDisplayLanguageID = displayLanguageID
     }
 
     public var model: String {
@@ -140,6 +161,19 @@ public final class InMemorySettingsStore: SettingsStore, @unchecked Sendable {
             lock.lock()
             defer { lock.unlock() }
             storedPageSize = Pagination.normalizedPageSize(newValue)
+        }
+    }
+
+    public var displayLanguageID: String? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return Self.nonEmpty(storedDisplayLanguageID)
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            storedDisplayLanguageID = newValue
         }
     }
 

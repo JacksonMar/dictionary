@@ -70,6 +70,9 @@ public final class AddWordUseCase: Sendable {
             return current.status == .ready ? .added(current) : .queued(current, nil)
         case .notFound:
             return .storageError(RepositoryError.notFound(entry.id).userMessage)
+        case .duplicate(let existing, _):
+            // M7 (D27): дубль виявлено після відповіді (напр. італійське виділення = наявний запис).
+            return .duplicate(existing)
         }
     }
 }

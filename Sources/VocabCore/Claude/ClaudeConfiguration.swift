@@ -7,6 +7,8 @@ public struct ClaudeConfiguration: Equatable, Sendable {
     public static let apiVersion = "2023-06-01"
     public static let defaultModel = SettingsDefaults.model
     public static let defaultMaxTokens = 4096
+    /// `max_tokens` пакетного доповнення варіантів (§7.7): 15 елементів × ~180 токенів + запас під thinking (U15).
+    public static let batchMaxTokens = 8192
     public static let defaultTimeout: TimeInterval = 30
 
     public var endpoint: URL

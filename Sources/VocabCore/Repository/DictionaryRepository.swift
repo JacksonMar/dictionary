@@ -1,5 +1,18 @@
 import Foundation
 
+/// Оновлення одного варіанта запису (`DictionaryRepository.setVariants`, M7).
+public struct VariantUpdate: Equatable, Sendable {
+    public var entryID: UUID
+    public var languageID: String
+    public var variant: EntryVariant
+
+    public init(entryID: UUID, languageID: String, variant: EntryVariant) {
+        self.entryID = entryID
+        self.languageID = languageID
+        self.variant = variant
+    }
+}
+
 /// Єдине джерело істини для записів словника. Кожна мутація: змінити копію → `store.save` →
 /// лише після успіху замінити стан і розіслати знімок підписникам.
 public actor DictionaryRepository {
@@ -31,17 +44,23 @@ public actor DictionaryRepository {
         entries.first { $0.id == id }
     }
 
-    /// Запис з тим самим ключем дедуплікації в тій самій мовній парі (D8).
+    /// Запис тієї ж мовної пари, серед ключів якого (`Entry.dedupKeys()`: англійський `key(word)` і ключі
+    /// ready-варіантів, D26) є `key(word)`. Для додавання нового слова (`add`, `AddWordUseCase`, ручне додавання).
     public func findDuplicate(of word: String, languagePair: String, excluding: UUID? = nil) -> Entry? {
-        let key = TextNormalizer.key(word)
+        findDuplicate(keys: [TextNormalizer.key(word)], languagePair: languagePair, excluding: excluding)
+    }
+
+    /// M7 (D27): запис тієї ж пари, `dedupKeys()` якого перетинаються з `keys` — перевірка після відповіді Claude.
+    public func findDuplicate(keys: Set<String>, languagePair: String, excluding: UUID?) -> Entry? {
+        guard !keys.isEmpty else { return nil }
         return entries.first { entry in
             entry.id != excluding
                 && entry.languagePair == languagePair
-                && TextNormalizer.key(entry.word) == key
+                && !entry.dedupKeys().isDisjoint(with: keys)
         }
     }
 
-    /// Додає запис. Перевірка дубля і вставка — в одному виклику актора.
+    /// Додає запис. Перевірка дубля (за всіма відображеннями, D26) і вставка — в одному виклику актора.
     @discardableResult
     public func add(_ draft: EntryDraft) throws -> Entry {
         try ensureLoaded()
@@ -68,22 +87,80 @@ public actor DictionaryRepository {
     }
 
     /// Оновлює запис за `id`; `updatedAt` = зараз, `createdAt` зберігається з поточного стану.
+    /// M7: збережені `variants` і `sourceLanguage` **зберігаються** (аргумент може бути застарілою копією
+    /// редактора/`AppModel`), див. `update(_:replacingVariants:)`.
     @discardableResult
     public func update(_ entry: Entry) throws -> Entry {
+        try update(entry, replacingVariants: false)
+    }
+
+    /// `replacingVariants: true` — `variants` і `sourceLanguage` беруться з аргументу (лише `EntryProcessor`).
+    /// Дубль перевіряється **лише** за англійським `key(word)` проти англійських ключів інших записів пари і
+    /// лише якщо ключ (або пара) змінився відносно збереженого запису (§6, M7). Варіанти дублів не перевіряються.
+    @discardableResult
+    public func update(_ entry: Entry, replacingVariants: Bool) throws -> Entry {
         try ensureLoaded()
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else {
             throw RepositoryError.notFound(entry.id)
         }
-        if let existing = findDuplicate(of: entry.word, languagePair: entry.languagePair, excluding: entry.id) {
-            throw RepositoryError.duplicate(existing)
+        let stored = entries[index]
+        let newKey = TextNormalizer.key(entry.word)
+        if newKey != TextNormalizer.key(stored.word) || entry.languagePair != stored.languagePair {
+            let duplicate = entries.first { other in
+                other.id != entry.id
+                    && other.languagePair == entry.languagePair
+                    && TextNormalizer.key(other.word) == newKey
+            }
+            if let duplicate {
+                throw RepositoryError.duplicate(duplicate)
+            }
         }
         var updated = entry
-        updated.createdAt = entries[index].createdAt
+        if !replacingVariants {
+            updated.variants = stored.variants
+            updated.sourceLanguage = stored.sourceLanguage
+        }
+        if updated.variants?.isEmpty == true {
+            updated.variants = nil
+        }
+        updated.createdAt = stored.createdAt
         updated.updatedAt = dateProvider.now()
         var newEntries = entries
         newEntries[index] = updated
         try commit(newEntries)
         return updated
+    }
+
+    /// M7: записує варіанти пакетом — **один** атомарний save. `Entry.updatedAt` не змінюється (D24).
+    /// Оновлення пропускається (не помилка), якщо запису вже нема або `variant.sourceKey` не збігається з
+    /// `key(поточного word)` (запис відредаговано під час запиту); виняток — варіант мови `sourceLanguage`
+    /// запису (слово користувача, ніколи не застаріває). Дублі ніколи не перевіряються.
+    /// - Returns: фактично оновлені записи (у порядку першої появи); нічого не застосовано → без save.
+    @discardableResult
+    public func setVariants(_ updates: [VariantUpdate]) throws -> [Entry] {
+        try ensureLoaded()
+        var newEntries = entries
+        var changedOrder: [UUID] = []
+        for update in updates {
+            guard let index = newEntries.firstIndex(where: { $0.id == update.entryID }) else {
+                continue
+            }
+            var entry = newEntries[index]
+            let isSourceLanguageVariant = entry.sourceLanguage == update.languageID
+            guard isSourceLanguageVariant || update.variant.sourceKey == TextNormalizer.key(entry.word) else {
+                continue
+            }
+            var variants = entry.variants ?? [:]
+            variants[update.languageID] = update.variant
+            entry.variants = variants
+            newEntries[index] = entry
+            if !changedOrder.contains(entry.id) {
+                changedOrder.append(entry.id)
+            }
+        }
+        guard !changedOrder.isEmpty else { return [] }
+        try commit(newEntries)
+        return changedOrder.compactMap { id in newEntries.first { $0.id == id } }
     }
 
     public func delete(id: UUID) throws {

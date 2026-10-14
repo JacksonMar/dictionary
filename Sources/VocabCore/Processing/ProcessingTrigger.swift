@@ -18,6 +18,12 @@ public enum ProcessingTrigger: String, CaseIterable, Sendable {
     case imported
     /// Таймер `processDue`.
     case due
+    /// M7: перемикання відображення на мову варіанта (автодоповнення).
+    case displaySwitch
+    /// M7: кнопка «Доповнити італійською (N)».
+    case variantBackfill
+    /// M7: «Оновити італійський переклад» для одного запису.
+    case variantRefresh
 }
 
 /// Рядки логу навколо викликів черги (§8.3, M6). Лише тригер, UUID і лічильники — без слова, тексту помилки, ключа.
@@ -38,6 +44,7 @@ public enum QueueLog {
         var failed = 0
         var skipped = 0
         var notFound = 0
+        var duplicate = 0
         for result in results {
             switch result {
             case .ready:
@@ -50,10 +57,36 @@ public enum QueueLog {
                 skipped += 1
             case .notFound:
                 notFound += 1
+            case .duplicate:
+                duplicate += 1
             }
         }
         return "Queue run finished: trigger=\(trigger.rawValue)" + idSuffix(entryID)
             + " ready=\(ready) pending=\(pending) failed=\(failed) skipped=\(skipped) notFound=\(notFound)"
+            + " duplicate=\(duplicate)"
+    }
+
+    /// M7: `Variant backfill started: trigger=displaySwitch language=it eligible=37`. Без слів.
+    public static func variantStarted(_ trigger: ProcessingTrigger, languageID: String, eligible: Int) -> String {
+        "Variant backfill started: trigger=\(trigger.rawValue) language=\(languageID) eligible=\(eligible)"
+    }
+
+    /// M7: `Variant backfill finished: trigger=displaySwitch language=it requests=3 ready=36 pending=1 failed=0`;
+    /// якщо прохід зупинено — ` stoppedBy=<тип помилки>`, якщо інший прохід уже йшов — ` alreadyRunning`.
+    public static func variantFinished(
+        _ trigger: ProcessingTrigger,
+        languageID: String,
+        report: VariantBackfillReport
+    ) -> String {
+        var message = "Variant backfill finished: trigger=\(trigger.rawValue) language=\(languageID)"
+            + " requests=\(report.requests) ready=\(report.ready) pending=\(report.pending) failed=\(report.failed)"
+        if let stoppedBy = report.stoppedBy {
+            message += " stoppedBy=\(stoppedBy.logName)"
+        }
+        if report.alreadyRunning {
+            message += " alreadyRunning"
+        }
+        return message
     }
 
     private static func idSuffix(_ entryID: UUID?) -> String {

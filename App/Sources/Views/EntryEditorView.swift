@@ -127,6 +127,9 @@ struct EntryEditorView: View {
                 }
             }
             EntryFormFields(form: $form)
+            if let rendering = model.activeRendering {
+                VariantReadOnlySection(entryID: entry.id, rendering: rendering)
+            }
             if let errorText {
                 Text(errorText)
                     .foregroundColor(.red)
@@ -161,6 +164,97 @@ struct EntryEditorView: View {
                 errorText = model.operationError
                 model.operationError = nil
             }
+        }
+    }
+}
+
+/// M7: італійські поля запису — лише для читання (редагування відкладено) + «Оновити італійський переклад».
+/// Дані беруться з актуального стану `AppModel` (після оновлення блок перемальовується).
+private struct VariantReadOnlySection: View {
+    let entryID: UUID
+    let rendering: RenderingLanguage
+
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let texts = RenderingLanguageTexts(rendering)
+        GroupBox(texts.sectionTitle) {
+            VStack(alignment: .leading, spacing: 6) {
+                if let entry = currentEntry, let variant = entry.readyVariant(rendering.id) {
+                    VariantFieldRow(title: "Слово", value: variant.word ?? "")
+                    VariantFieldRow(title: "Лема", value: variant.lemma ?? "")
+                    VariantFieldRow(title: "Частина мови", value: variant.partOfSpeech ?? "")
+                    VariantFieldRow(title: "Транскрипція", value: variant.transcription ?? "")
+                    VariantFieldRow(title: "Переклади", value: variant.translations.joined(separator: ", "))
+                    VariantFieldRow(title: "Приклад", value: variant.example?.source ?? "")
+                    VariantFieldRow(title: "Переклад прикладу", value: variant.example?.translation ?? "")
+                } else {
+                    Text(statusText)
+                        .foregroundColor(Color.secondary)
+                }
+                HStack {
+                    Spacer()
+                    if model.retryingIDs.contains(entryID) {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Button(texts.refreshTitle) {
+                        refresh()
+                    }
+                    .disabled(!canRefresh)
+                    .help("Один запит до Claude лише для цього запису")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(4)
+        }
+    }
+
+    private var currentEntry: Entry? {
+        model.entries.first { $0.id == entryID }
+    }
+
+    private var canRefresh: Bool {
+        guard model.isBackfillAvailable, let entry = currentEntry else { return false }
+        return entry.status == .ready && !model.retryingIDs.contains(entryID)
+    }
+
+    private var statusText: String {
+        guard let entry = currentEntry else { return "Запис не знайдено" }
+        guard entry.status == .ready else {
+            return "Буде заповнено разом з основним перекладом"
+        }
+        switch entry.variantState(rendering.id) {
+        case .failed:
+            let lastError = entry.variants?[rendering.id]?.lastError ?? ""
+            return lastError.isEmpty ? "Помилка доповнення" : "Помилка: \(lastError)"
+        case .missing, .stale, .pending, .ready:
+            return "Ще не доповнено"
+        }
+    }
+
+    private func refresh() {
+        let id = entryID
+        let languageID = rendering.id
+        Task { @MainActor in
+            await model.refreshVariant(id: id, languageID: languageID)
+        }
+    }
+}
+
+/// Рядок «назва: значення» (виділюваний текст, без редагування).
+private struct VariantFieldRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .foregroundColor(Color.secondary)
+                .frame(width: 130, alignment: .leading)
+            Text(value.isEmpty ? "—" : value)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

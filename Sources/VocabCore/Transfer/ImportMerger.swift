@@ -51,24 +51,43 @@ public enum ImportMerger {
             }
 
             let current = index.entries[position]
-            guard candidate.updatedAt > current.updatedAt else {
-                report.addSkipped(["«\(candidate.word)»: у словнику та сама або новіша версія"])
+            let skipReason: String?
+            if candidate.updatedAt <= current.updatedAt {
+                skipReason = "«\(candidate.word)»: у словнику та сама або новіша версія"
+            } else if current.status == .ready && candidate.status != .ready {
+                skipReason = "«\(candidate.word)»: імпортований запис ще не оброблено, у словнику — готовий"
+            } else if let other = index.position(ofKey: candidateKey), other != position {
+                skipReason = "«\(candidate.word)»: у словнику вже є інший запис з цим словом"
+            } else {
+                skipReason = nil
+            }
+
+            guard let skipReason else {
+                var replacement = candidate
+                replacement.id = current.id
+                replacement.variants = VariantMerge.combine(winner: replacement, other: current)
+                index.replace(at: position, with: replacement)
+                report.updated += 1
                 continue
             }
-            if current.status == .ready && candidate.status != .ready {
-                report.addSkipped(["«\(candidate.word)»: імпортований запис ще не оброблено, у словнику — готовий"])
-                continue
+            // M7 (D30): основні поля лишаються локальними, але варіанти з файлу можуть доповнити локальні —
+            // тоді запис рахується як `updated` (дані з файлу замість нових запитів). `updatedAt` не змінюється.
+            let combined = VariantMerge.combine(winner: current, other: candidate)
+            if !sameVariants(combined, current.variants) {
+                var adopted = current
+                adopted.variants = combined
+                index.replace(at: position, with: adopted)
+                report.updated += 1
+            } else {
+                report.addSkipped([skipReason])
             }
-            if let other = index.position(ofKey: candidateKey), other != position {
-                report.addSkipped(["«\(candidate.word)»: у словнику вже є інший запис з цим словом"])
-                continue
-            }
-            var replacement = candidate
-            replacement.id = current.id
-            index.replace(at: position, with: replacement)
-            report.updated += 1
         }
         return (index.entries, report)
+    }
+
+    /// Порівняння варіантів з нормалізацією `nil` ≡ `[:]`.
+    static func sameVariants(_ lhs: [String: EntryVariant]?, _ rhs: [String: EntryVariant]?) -> Bool {
+        (lhs ?? [:]) == (rhs ?? [:])
     }
 
     // MARK: - Private
@@ -85,11 +104,21 @@ public enum ImportMerger {
         with candidate: Entry,
         skipped: inout [String]
     ) {
-        if candidate.updatedAt > index.entries[position].updatedAt {
-            skipped.append(duplicateReason(index.entries[position]))
-            index.replace(at: position, with: candidate)
+        let existing = index.entries[position]
+        if candidate.updatedAt > existing.updatedAt {
+            skipped.append(duplicateReason(existing))
+            var winner = candidate
+            winner.variants = VariantMerge.combine(winner: candidate, other: existing)
+            index.replace(at: position, with: winner)
         } else {
             skipped.append(duplicateReason(candidate))
+            // M7: варіанти програшного дубля можуть доповнити переможця (те саме правило, що й у merge).
+            let combined = VariantMerge.combine(winner: existing, other: candidate)
+            if !sameVariants(combined, existing.variants) {
+                var winner = existing
+                winner.variants = combined
+                index.replace(at: position, with: winner)
+            }
         }
     }
 

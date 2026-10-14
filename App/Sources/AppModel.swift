@@ -37,6 +37,8 @@ struct ClaudeServices {
     let queue: PendingQueueProcessor
     let addWord: AddWordUseCase
     let serviceHandler: ServiceRequestHandler
+    /// M7: пакетне доповнення варіантів через той самий `ClaudeLookupService` (ключ, модель, логер).
+    let variantBackfill: VariantBackfillProcessor
 
     static func make(
         repository: DictionaryRepository,
@@ -66,6 +68,14 @@ struct ClaudeServices {
         )
         let addWord = AddWordUseCase(repository: repository, processor: queue, settings: settings, registry: registry)
         let serviceHandler = ServiceRequestHandler(useCase: addWord)
+        let variantBackfill = VariantBackfillProcessor(
+            repository: repository,
+            lookup: lookup,
+            registry: registry,
+            policy: policy,
+            dateProvider: dateProvider,
+            logger: logger
+        )
         return ClaudeServices(
             secrets: secrets,
             settings: settings,
@@ -73,7 +83,8 @@ struct ClaudeServices {
             logger: logger,
             queue: queue,
             addWord: addWord,
-            serviceHandler: serviceHandler
+            serviceHandler: serviceHandler,
+            variantBackfill: variantBackfill
         )
     }
 }
@@ -155,6 +166,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var loginItemState: LoginItemState?
     /// Помилка увімкнення/вимкнення автозапуску.
     @Published var loginItemError: String?
+    /// M7: активна мова відображення (id мови варіанта, напр. `"it"`); `nil` = мова джерела пари («EN»).
+    @Published private(set) var displayLanguageID: String?
+    /// M7: іде прохід доповнення варіантів.
+    @Published private(set) var isBackfilling = false
+    /// M7: підсумок останнього проходу доповнення.
+    @Published private(set) var lastBackfillReport: VariantBackfillReport?
 
     /// Типова назва файлу експорту.
     static let defaultExportFileName = "dictionary.json"
@@ -172,6 +189,10 @@ final class AppModel: ObservableObject {
     /// Налаштування (M6: тема, розмір сторінки) — той самий екземпляр, що й у `ClaudeServices`, якщо він є.
     private let settings: SettingsStore
     private let appearanceApplier: AppearanceApplying?
+    /// M7: пакетне доповнення варіантів; `nil` — доповнення недоступне (M1–M6 тести, без Claude).
+    private let variantBackfill: VariantBackfillProcessor?
+    /// M7: останній запущений прохід доповнення (для тестів — щоб дочекатися).
+    private(set) var backfillTask: Task<Void, Never>?
     /// Обробка імпортованих pending-записів, запущена після імпорту (для тестів — щоб дочекатися).
     private(set) var postImportProcessing: Task<Void, Never>?
     private var changesTask: Task<Void, Never>?
@@ -192,7 +213,8 @@ final class AppModel: ObservableObject {
         speech: SpeechSpeaking? = nil,
         registry: LanguagePairRegistry = .shared,
         settings: SettingsStore? = nil,
-        appearanceApplier: AppearanceApplying? = nil
+        appearanceApplier: AppearanceApplying? = nil,
+        variantBackfill: VariantBackfillProcessor? = nil
     ) {
         self.repository = repository
         self.languagePairID = languagePairID
@@ -207,6 +229,13 @@ final class AppModel: ObservableObject {
         self.appearanceApplier = appearanceApplier
         self.pageSize = Pagination.normalizedPageSize(resolvedSettings.pageSize)
         self.appearance = resolvedSettings.appearance
+        self.variantBackfill = variantBackfill
+        // M7: збережений режим перевіряється для поточної пари; невідомий → мова джерела («EN»).
+        let storedLanguage = resolvedSettings.displayLanguageID
+        let pair = registry.pair(id: languagePairID)
+        let validLanguage = storedLanguage.flatMap { id in pair?.rendering(id: id) != nil ? id : nil }
+        self.displayLanguageID = validLanguage
+        self.query = EntryQuery(languageID: validLanguage)
         if let claude {
             modelName = claude.settings.model
         }
@@ -319,6 +348,10 @@ final class AppModel: ObservableObject {
         logQueueStarted(.manual, entryID: id)
         let result = await claude.queue.retry(entryID: id)
         logQueueFinished(.manual, entryID: id, results: [result])
+        if case .duplicate(let existing, _) = result {
+            // M7 (D27): запис виявився дублем іншого — «Вже є в словнику».
+            operationError = RepositoryError.duplicate(existing).userMessage
+        }
         apply(await repository.allEntries())
         return result
     }
@@ -403,6 +436,121 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Мова відображення (M7)
+
+    /// Пара нових записів (для перемикача й доповнення).
+    var currentPair: LanguagePair? {
+        registry.pair(id: languagePairID)
+    }
+
+    /// Мови відображення поточної пари; порожньо → перемикач прихований.
+    var renderings: [RenderingLanguage] {
+        currentPair?.renderings ?? []
+    }
+
+    /// Активна мова відображення (`nil` у режимі мови джерела).
+    var activeRendering: RenderingLanguage? {
+        displayLanguageID.flatMap { currentPair?.rendering(id: $0) }
+    }
+
+    /// Прив'язка для сегментованого `Picker` (tag `nil` = мова джерела).
+    var displayLanguageSelection: String? {
+        get { displayLanguageID }
+        set { setDisplayLanguage(newValue) }
+    }
+
+    /// Перемикач EN | IT: зберігає режим, скидає сторінку на 1, оновлює `query.languageID`; перехід у режим
+    /// мови варіанта запускає автодоповнення (`.displaySwitch`; 0 придатних → 0 запитів). Невідома для пари мова
+    /// → мова джерела. Повертає задачу доповнення (для тестів), якщо її запущено.
+    @discardableResult
+    func setDisplayLanguage(_ id: String?) -> Task<Void, Never>? {
+        let validated = id.flatMap { currentPair?.rendering(id: $0) != nil ? $0 : nil }
+        settings.displayLanguageID = validated
+        displayLanguageID = validated
+        query.languageID = validated
+        pageNumber = 1
+        guard validated != nil, variantBackfill != nil else { return nil }
+        let task = Task { @MainActor [weak self] in
+            await self?.runBackfill(trigger: .displaySwitch)
+        }
+        backfillTask = task
+        return task
+    }
+
+    /// Рядки поточної сторінки в активній мові.
+    var displayedPage: [EntryDisplay] {
+        currentPage.entries.map { EntryDisplay.make($0, languageID: displayLanguageID) }
+    }
+
+    /// Кількість записів, які доповнить кнопка «Доповнити італійською (N)» (разом з `failed`).
+    var backfillableCount: Int {
+        guard let pair = currentPair, let languageID = displayLanguageID else { return 0 }
+        return entries.reduce(0) { count, entry in
+            count + (VariantBackfillProcessor.isEligible(entry, pair: pair, languageID: languageID, includeFailed: true) ? 1 : 0)
+        }
+    }
+
+    /// Доповнення доступне (є Claude-залежність і режим мови варіанта).
+    var isBackfillAvailable: Bool {
+        variantBackfill != nil && displayLanguageID != nil
+    }
+
+    /// Автодоповнення активної мови (без backoff). Нічого не робить у режимі мови джерела або під час проходу.
+    func runBackfill(trigger: ProcessingTrigger) async {
+        guard let variantBackfill, let languageID = displayLanguageID, !isBackfilling else { return }
+        isBackfilling = true
+        defer { isBackfilling = false }
+        let eligible = await variantBackfill.eligibleEntryIDs(
+            pairID: languagePairID,
+            languageID: languageID,
+            includeFailed: false
+        ).count
+        claude?.logger.info(QueueLog.variantStarted(trigger, languageID: languageID, eligible: eligible))
+        let report = await variantBackfill.backfill(pairID: languagePairID, languageID: languageID, ignoringBackoff: true)
+        await finishBackfill(trigger, languageID: languageID, report: report)
+    }
+
+    /// «Доповнити італійською (N)»: разом з `failed`, без backoff.
+    func backfillAll() async {
+        guard let variantBackfill, let languageID = displayLanguageID, !isBackfilling else { return }
+        isBackfilling = true
+        defer { isBackfilling = false }
+        let eligible = await variantBackfill.eligibleEntryIDs(
+            pairID: languagePairID,
+            languageID: languageID,
+            includeFailed: true
+        ).count
+        claude?.logger.info(QueueLog.variantStarted(.variantBackfill, languageID: languageID, eligible: eligible))
+        let report = await variantBackfill.backfillAll(pairID: languagePairID, languageID: languageID)
+        await finishBackfill(.variantBackfill, languageID: languageID, report: report)
+    }
+
+    /// «Оновити італійський переклад»: рівно 1 запит для одного запису (навіть ready-варіант).
+    /// `languageID == nil` → активна мова, а в режимі мови джерела — перша мова відображення пари.
+    @discardableResult
+    func refreshVariant(id: UUID, languageID: String? = nil) async -> VariantBackfillReport? {
+        guard let variantBackfill else { return nil }
+        guard let target = languageID ?? displayLanguageID ?? renderings.first?.id else { return nil }
+        guard !retryingIDs.contains(id) else { return nil }
+        retryingIDs.insert(id)
+        defer { retryingIDs.remove(id) }
+        claude?.logger.info(QueueLog.variantStarted(.variantRefresh, languageID: target, eligible: 1))
+        let report = await variantBackfill.refresh(entryID: id, languageID: target)
+        await finishBackfill(.variantRefresh, languageID: target, report: report)
+        if report.alreadyRunning {
+            operationError = "Доповнення вже триває, спробуйте пізніше"
+        } else if let error = report.stoppedBy {
+            operationError = error.userMessage
+        }
+        return report
+    }
+
+    private func finishBackfill(_ trigger: ProcessingTrigger, languageID: String, report: VariantBackfillReport) async {
+        claude?.logger.info(QueueLog.variantFinished(trigger, languageID: languageID, report: report))
+        lastBackfillReport = report
+        apply(await repository.allEntries())
+    }
+
     // MARK: - Тема (M6)
 
     /// Зберігає тему й застосовує її (`AppearanceApplying`).
@@ -435,10 +583,29 @@ final class AppModel: ObservableObject {
     }
 
     func speechLanguageCode(for languagePair: String) -> String {
-        let pair = registry.pair(id: languagePair)
+        resolvedPair(languagePair).speechLanguageCode
+    }
+
+    /// M7: код голосу для мови відображення (`nil` → мова джерела пари; невідома мова → мова джерела).
+    func speechLanguageCode(for languagePair: String, languageID: String?) -> String {
+        let pair = resolvedPair(languagePair)
+        guard let languageID, let rendering = pair.rendering(id: languageID) else {
+            return pair.speechLanguageCode
+        }
+        return rendering.speechLanguageCode
+    }
+
+    /// M7: озвучення тексту рядка таблиці — голосом мови відображення, лише для ready-варіанта (U17).
+    func speak(_ text: String, display: EntryDisplay) {
+        guard let speech else { return }
+        let languageID = display.isFallback ? nil : display.languageID
+        speech.speak(text, languageCode: speechLanguageCode(for: display.entry.languagePair, languageID: languageID))
+    }
+
+    private func resolvedPair(_ languagePair: String) -> LanguagePair {
+        registry.pair(id: languagePair)
             ?? registry.pair(id: LanguagePairRegistry.defaultPairID)
             ?? .englishUkrainian
-        return pair.speechLanguageCode
     }
 
     // MARK: - Автозапуск (M5)
@@ -488,7 +655,14 @@ final class AppModel: ObservableObject {
         logQueueStarted(trigger)
         let results = await claude.queue.processAll(ignoringBackoff: true)
         logQueueFinished(trigger, results: results)
+        // M7 (§8.4, D28): після черги — автодоповнення, лише в режимі мови варіанта.
+        if displayLanguageID != nil, Self.backfillTriggers.contains(trigger) {
+            await runBackfill(trigger: trigger)
+        }
     }
+
+    /// Тригери черги, після яких у режимі мови варіанта запускається автодоповнення (не таймер, не імпорт).
+    static let backfillTriggers: Set<ProcessingTrigger> = [.startup, .network, .keySaved]
 
     /// Таймер: лише записи, для яких настав час наступної спроби.
     func processDue() async {

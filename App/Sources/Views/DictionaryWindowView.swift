@@ -21,6 +21,15 @@ struct DictionaryWindowView: View {
             .frame(minWidth: 720, minHeight: 420)
             .searchable(text: $model.query.searchText, placement: .toolbar, prompt: "Слово або переклад")
             .toolbar {
+                // M7: перемикач мови відображення EN | IT (прихований, якщо в пари немає мов відображення; U16).
+                ToolbarItem(placement: .principal) {
+                    if !model.renderings.isEmpty {
+                        DisplayLanguagePicker()
+                    }
+                }
+                ToolbarItem(placement: .automatic) {
+                    BackfillToolbarControl()
+                }
                 ToolbarItem(placement: .automatic) {
                     Picker(selection: $model.query.sort) {
                         ForEach(EntrySort.allCases, id: \.self) { sort in
@@ -83,6 +92,10 @@ struct DictionaryWindowView: View {
             .onChange(of: model.pageNumber) { _ in
                 selection.removeAll()
             }
+            // M7: перемикання мови відображення скидає виділення.
+            .onChange(of: model.displayLanguageID) { _ in
+                selection.removeAll()
+            }
             .alert("Помилка", isPresented: operationErrorBinding) {
                 Button("OK") {
                     model.operationError = nil
@@ -135,15 +148,18 @@ struct DictionaryWindowView: View {
     private func pageView(_ page: EntryPage) -> some View {
         VStack(spacing: 0) {
             EntryTableView(
-                entries: page.entries,
+                rows: model.displayedPage,
                 selection: $selection,
                 retryingIDs: model.retryingIDs,
                 canRetry: model.isClaudeAvailable,
                 canSpeak: model.isSpeechAvailable,
+                variantTexts: model.activeRendering.map { RenderingLanguageTexts($0) },
+                canRefreshVariant: model.isBackfillAvailable,
                 onEdit: { entry in editingEntry = entry },
                 onDelete: { entries in pendingDeletion = PendingDeletion(entries: entries) },
                 onRetry: { entries in retry(entries) },
-                onSpeak: { text, entry in model.speak(text, languagePair: entry.languagePair) }
+                onRefreshVariant: { entry in refreshVariant(entry) },
+                onSpeak: { text, row in model.speak(text, display: row) }
             )
             if page.pageCount > 1 {
                 Divider()
@@ -163,6 +179,14 @@ struct DictionaryWindowView: View {
             for id in ids {
                 await model.retry(id: id)
             }
+        }
+    }
+
+    /// M7: «Оновити італійський переклад» / «Повторити» для варіанта — рівно 1 запит.
+    private func refreshVariant(_ entry: Entry) {
+        let id = entry.id
+        Task { @MainActor in
+            await model.refreshVariant(id: id)
         }
     }
 
@@ -223,6 +247,55 @@ struct DictionaryWindowView: View {
                 }
             }
         )
+    }
+}
+
+/// M7: сегментований перемикач «EN | IT» (`pair.sourceShortTitle` + `renderings.map(\.shortTitle)`).
+private struct DisplayLanguagePicker: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Picker("Мова", selection: $model.displayLanguageSelection) {
+            Text(model.currentPair?.sourceShortTitle ?? "EN")
+                .tag(String?.none)
+            ForEach(model.renderings, id: \.id) { rendering in
+                Text(rendering.shortTitle)
+                    .tag(String?.some(rendering.id))
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .help("Мова відображення словника")
+        .disabled(!model.isLoaded)
+    }
+}
+
+/// M7: «Доповнити італійською (N)» (лише в режимі мови варіанта і N > 0) та індикатор проходу доповнення.
+private struct BackfillToolbarControl: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if let rendering = model.activeRendering, model.isBackfillAvailable {
+            let texts = RenderingLanguageTexts(rendering)
+            if model.isBackfilling {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(texts.backfillProgress)
+                        .foregroundColor(Color.secondary)
+                }
+            } else if model.backfillableCount > 0 {
+                Button {
+                    Task { @MainActor in
+                        await model.backfillAll()
+                    }
+                } label: {
+                    Text("\(texts.backfillTitle) (\(model.backfillableCount))")
+                }
+                .help("Запитати переклади для записів без готової версії (пакетами по 15)")
+            }
+        }
     }
 }
 

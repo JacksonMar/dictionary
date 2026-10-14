@@ -31,16 +31,18 @@ public enum NotificationText {
     public static func make(for outcome: AddWordOutcome) -> NotificationContent {
         switch outcome {
         case .added(let entry):
-            let translations = translationsText(entry)
-            let body = translations.isEmpty ? "Додано: \(entry.word)" : "Додано: \(entry.word) — \(translations)"
+            let display = selectionDisplay(entry)
+            let translations = translationsText(display)
+            let body = translations.isEmpty ? "Додано: \(display.word)" : "Додано: \(display.word) — \(translations)"
             return NotificationContent(title: "Додано", body: body)
 
         case .duplicate(let entry):
             let details: String
             switch entry.status {
             case .ready:
-                let translations = translationsText(entry)
-                details = translations.isEmpty ? entry.word : "\(entry.word) — \(translations)"
+                let display = selectionDisplay(entry)
+                let translations = translationsText(display)
+                details = translations.isEmpty ? display.word : "\(display.word) — \(translations)"
             case .pending, .failed:
                 details = "\(entry.word) — очікує обробки"
             }
@@ -93,7 +95,14 @@ public enum NotificationText {
         }
     }
 
-    private static func translationsText(_ entry: Entry) -> String {
-        entry.translations.prefix(maxTranslations).joined(separator: ", ")
+    /// M7 (§9): відображення мовою виділення (`entry.sourceLanguage`; `nil` → як раніше). Якщо варіант мови
+    /// виділення не ready — англійське відображення.
+    private static func selectionDisplay(_ entry: Entry) -> EntryDisplay {
+        let display = EntryDisplay.make(entry, languageID: entry.sourceLanguage)
+        return display.isFallback ? EntryDisplay.make(entry, languageID: nil) : display
+    }
+
+    private static func translationsText(_ display: EntryDisplay) -> String {
+        display.translations.prefix(maxTranslations).joined(separator: ", ")
     }
 }

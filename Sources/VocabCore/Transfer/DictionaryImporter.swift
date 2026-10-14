@@ -18,8 +18,13 @@ public struct ParsedImport: Equatable, Sendable {
 /// (непорожній рядок; невідома пара допускається, §3.1), `word` (непорожній), `status` ∈ `ready|pending|failed`,
 /// `createdAt`, `updatedAt` (ISO8601), `translations` (масив рядків; для `ready` — хоча б один непорожній після
 /// очищення). `word` очищується `TextNormalizer.clean`, переклади — trim і згортання пробілів (див. `normalized`).
+///
+/// M7: некоректні варіанти відкидаються стійким декодуванням `Entry` (запис не пропускається, у звіт не
+/// потрапляє); варіанти очищуються (`word` — `clean`, переклади — як для запису; `ready` без слова чи перекладів
+/// відкидається); `sourceLanguage`, не допустимий для відомої пари, скидається в `nil`.
 public enum DictionaryImporter {
-    public static func parse(_ data: Data) throws -> ParsedImport {
+    /// - Parameter registry: лише для перевірки `sourceLanguage` (допустимі мови відомої пари).
+    public static func parse(_ data: Data, registry: LanguagePairRegistry = .shared) throws -> ParsedImport {
         guard let text = String(data: data, encoding: .utf8) else {
             throw ImportError.notJSON
         }
@@ -52,7 +57,7 @@ public enum DictionaryImporter {
         var entries: [Entry] = []
         var skipped: [String] = []
         for (index, raw) in rawEntries.enumerated() {
-            switch validateEntry(raw) {
+            switch validateEntry(raw, registry: registry) {
             case .success(let entry):
                 entries.append(entry)
             case .failure(let problem):
@@ -68,7 +73,7 @@ public enum DictionaryImporter {
         let text: String
     }
 
-    private static func validateEntry(_ raw: Any) -> Result<Entry, EntryProblem> {
+    private static func validateEntry(_ raw: Any, registry: LanguagePairRegistry) -> Result<Entry, EntryProblem> {
         guard let fields = raw as? [String: Any] else {
             return .failure(EntryProblem(text: "не є об'єктом"))
         }
@@ -117,13 +122,13 @@ public enum DictionaryImporter {
         } catch {
             return .failure(EntryProblem(text: "некоректний формат запису"))
         }
-        return normalized(decoded)
+        return normalized(decoded, registry: registry)
     }
 
     /// Очищення імпортованого запису (як для виділення/ручного додавання): `word` — `TextNormalizer.clean`;
     /// переклади — згорнуті пробіли + trim, порожні відкидаються. Крайня пунктуація перекладів **не** знімається
     /// (`clean` зрізав би, напр., дужку в «бігти (швидко)»). `ready` без жодного непорожнього перекладу — пропуск.
-    static func normalized(_ entry: Entry) -> Result<Entry, EntryProblem> {
+    static func normalized(_ entry: Entry, registry: LanguagePairRegistry = .shared) -> Result<Entry, EntryProblem> {
         var result = entry
         result.word = TextNormalizer.clean(entry.word)
         guard !result.word.isEmpty else {
@@ -135,7 +140,36 @@ public enum DictionaryImporter {
         if result.status == .ready && result.translations.isEmpty {
             return .failure(EntryProblem(text: "готовий запис без перекладів"))
         }
+        result.variants = normalizedVariants(entry.variants)
+        if let sourceLanguage = result.sourceLanguage, let pair = registry.pair(id: result.languagePair) {
+            // Мова пари — це `nil` за визначенням; недопустима мова — теж `nil`.
+            if sourceLanguage == pair.sourceLanguageCode || pair.rendering(id: sourceLanguage) == nil {
+                result.sourceLanguage = nil
+            }
+        }
         return .success(result)
+    }
+
+    /// Очищення варіантів: `word` → `clean` (порожнє → `nil`), переклади — як для запису; `ready` без слова чи
+    /// без перекладів відкидається. Порожній результат → `nil`.
+    static func normalizedVariants(_ variants: [String: EntryVariant]?) -> [String: EntryVariant]? {
+        guard let variants else { return nil }
+        var result: [String: EntryVariant] = [:]
+        for (languageID, variant) in variants {
+            var cleaned = variant
+            if let word = variant.word {
+                let cleanedWord = TextNormalizer.clean(word)
+                cleaned.word = cleanedWord.isEmpty ? nil : cleanedWord
+            }
+            cleaned.translations = variant.translations
+                .map(collapseWhitespace)
+                .filter { !$0.isEmpty }
+            if cleaned.status == .ready && (cleaned.word == nil || cleaned.translations.isEmpty) {
+                continue
+            }
+            result[languageID] = cleaned
+        }
+        return result.isEmpty ? nil : result
     }
 
     /// Будь-які пробільні символи → один пробіл, trim.
