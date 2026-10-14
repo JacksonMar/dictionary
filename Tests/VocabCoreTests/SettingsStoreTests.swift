@@ -68,6 +68,93 @@ final class SettingsStoreTests: XCTestCase {
         memory.model = " "
         XCTAssertEqual(memory.model, "claude-haiku-5-5")
     }
+
+    // MARK: - M6.4: тема і розмір сторінки
+
+    func testAppearanceDefaultsToSystem() {
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).appearance, .system)
+        XCTAssertNil(defaults.object(forKey: "appearance"))
+        XCTAssertEqual(InMemorySettingsStore().appearance, .system)
+        XCTAssertEqual(AppAppearance.allCases, [.system, .light, .dark])
+        XCTAssertEqual(AppAppearance.system.title, "Як у системі")
+        XCTAssertEqual(AppAppearance.light.title, "Світла")
+        XCTAssertEqual(AppAppearance.dark.title, "Темна")
+    }
+
+    func testAppearancePersistsInUserDefaults() {
+        XCTAssertEqual(UserDefaultsSettingsStore.appearanceKey, "appearance")
+        let store = UserDefaultsSettingsStore(defaults: defaults)
+        store.appearance = .dark
+
+        XCTAssertEqual(store.appearance, .dark)
+        XCTAssertEqual(defaults.string(forKey: "appearance"), "dark")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).appearance, .dark,
+                       "new instance over same defaults sees the value")
+
+        store.appearance = .light
+        XCTAssertEqual(defaults.string(forKey: "appearance"), "light")
+        store.appearance = .system
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).appearance, .system)
+    }
+
+    func testUnknownAppearanceFallsBackToSystem() {
+        let store = UserDefaultsSettingsStore(defaults: defaults)
+        for raw in ["purple", "", "Dark", " dark"] {
+            defaults.set(raw, forKey: "appearance")
+            XCTAssertEqual(store.appearance, .system, "'\(raw)'")
+        }
+        defaults.set(42, forKey: "appearance")
+        XCTAssertEqual(store.appearance, .system, "non-string value")
+    }
+
+    func testPageSizeDefaultAndPersist() {
+        XCTAssertEqual(UserDefaultsSettingsStore.pageSizeKey, "entriesPageSize")
+        let store = UserDefaultsSettingsStore(defaults: defaults)
+        XCTAssertEqual(store.pageSize, 25)
+
+        for size in [20, 30, 25] {
+            store.pageSize = size
+            XCTAssertEqual(store.pageSize, size)
+            XCTAssertEqual(defaults.integer(forKey: "entriesPageSize"), size)
+            XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).pageSize, size)
+        }
+    }
+
+    func testInvalidPageSizeFallsBackToDefault() {
+        let store = UserDefaultsSettingsStore(defaults: defaults)
+        store.pageSize = 30
+
+        store.pageSize = 50
+        XCTAssertEqual(store.pageSize, 25, "setter normalizes unsupported value")
+
+        for raw in [0, -3, 7, 50, 1000] {
+            defaults.set(raw, forKey: "entriesPageSize")
+            XCTAssertEqual(store.pageSize, 25, "externally written \(raw)")
+        }
+        defaults.set("abc", forKey: "entriesPageSize")
+        XCTAssertEqual(store.pageSize, 25, "non-numeric value")
+
+        let memory = InMemorySettingsStore(pageSize: 99)
+        XCTAssertEqual(memory.pageSize, 25)
+        memory.pageSize = 20
+        memory.pageSize = 31
+        XCTAssertEqual(memory.pageSize, 25)
+    }
+
+    func testInMemoryStoreAppearanceAndPageSize() {
+        let memory = InMemorySettingsStore(appearance: .dark, pageSize: 30)
+        XCTAssertEqual(memory.appearance, .dark)
+        XCTAssertEqual(memory.pageSize, 30)
+
+        memory.appearance = .light
+        memory.pageSize = 20
+        XCTAssertEqual(memory.appearance, .light)
+        XCTAssertEqual(memory.pageSize, 20)
+
+        let defaultsOnly = InMemorySettingsStore()
+        XCTAssertEqual(defaultsOnly.appearance, .system)
+        XCTAssertEqual(defaultsOnly.pageSize, 25)
+    }
 }
 
 final class InMemorySecretStoreTests: XCTestCase {

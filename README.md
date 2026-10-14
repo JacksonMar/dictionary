@@ -167,11 +167,11 @@ xcodegen generate
 xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-
 ```
 
-Очікуваний результат у кінці виводу: `Executed 69 tests, with 0 failures` і `** TEST SUCCEEDED **`.
+Очікуваний результат у кінці виводу: `Executed 86 tests, with 0 failures` і `** TEST SUCCEEDED **`.
 
 Звідки число: це рядок `Executed N tests` з виводу `xcodebuild test` (тести застосунку, `App/Tests`); його ж можна
-порахувати без збірки — `grep -rh "func test" App/Tests | wc -l`. 69 — стан після M5; після M6 Tester оновлює
-число тут на фактичне `Executed N tests`.
+порахувати без збірки — `grep -rh "func test" App/Tests | wc -l`. 86 — стан після M6 (69 після M5 + 14 `AppModelM6Tests` + 3
+`AppearanceControllerTests`); число пораховано `grep`, підтвердити фактичним `Executed N tests` з CI/Mac.
 
 ### Окремо ядро і застосунок
 
