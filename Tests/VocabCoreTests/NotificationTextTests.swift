@@ -147,4 +147,43 @@ final class NotificationTextTests: XCTestCase {
         XCTAssertEqual(ServiceResponse(outcome: outcome).notification, NotificationText.make(for: outcome))
         XCTAssertEqual(ServiceResponse(outcome: outcome).outcome, outcome)
     }
+
+
+    // MARK: - M7: selection language
+
+    private func italianSelection(variantStatus: EntryStatus = .ready) -> Entry {
+        var house = entry("house", translations: ["будинок", "дім"])
+        house.sourceLanguage = "it"
+        house.variants = ["it": EntryVariant(
+            word: variantStatus == .ready ? "casa" : nil,
+            translations: variantStatus == .ready ? ["дім", "будинок", "оселя", "житло"] : [],
+            status: variantStatus,
+            sourceKey: "house"
+        )]
+        return house
+    }
+
+    func testAddedItalianUsesItalianRendering() {
+        XCTAssertEqual(
+            NotificationText.make(for: .added(italianSelection())),
+            NotificationContent(title: "Додано", body: "Додано: casa — дім, будинок, оселя")
+        )
+        // Англійське виділення з італійським варіантом — як раніше (англійською).
+        var english = entry("house", translations: ["будинок"])
+        english.variants = italianSelection().variants
+        XCTAssertEqual(NotificationText.make(for: .added(english)).body, "Додано: house — будинок")
+        // Варіант мови виділення не ready → англійське відображення.
+        XCTAssertEqual(NotificationText.make(for: .added(italianSelection(variantStatus: .pending))).body,
+                       "Додано: house — будинок, дім")
+    }
+
+    func testDuplicateItalian() {
+        XCTAssertEqual(
+            NotificationText.make(for: .duplicate(italianSelection())),
+            NotificationContent(title: "Вже є в словнику", body: "casa — дім, будинок, оселя")
+        )
+        var pending = italianSelection()
+        pending.status = .pending
+        XCTAssertEqual(NotificationText.make(for: .duplicate(pending)).body, "house — очікує обробки")
+    }
 }

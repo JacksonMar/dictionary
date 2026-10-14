@@ -177,4 +177,66 @@ final class EntryQueryTests: XCTestCase {
         _ = EntryQuery(searchText: "x", sort: .alphabetical).apply(to: input)
         XCTAssertEqual(input.map(\.word), ["run", "went", "café"])
     }
+
+
+    // MARK: - M7: active display language
+
+    private func italian(
+        _ word: String,
+        variant: String?,
+        translations: [String] = [],
+        variantTranslations: [String] = [],
+        created: TimeInterval
+    ) -> Entry {
+        var entry = entry(word, lemma: word, translations: translations.isEmpty ? ["переклад-\(word)"] : translations,
+                          created: created)
+        if let variant {
+            entry.variants = ["it": EntryVariant(
+                word: variant, lemma: variant, partOfSpeech: "noun", transcription: "/x/",
+                translations: variantTranslations.isEmpty ? ["італ-\(variant)"] : variantTranslations,
+                status: .ready, sourceKey: TextNormalizer.key(word)
+            )]
+        }
+        return entry
+    }
+
+    func testSearchItalianWordInItalianMode() {
+        let house = italian("house", variant: "casa", translations: ["будинок"], variantTranslations: ["оселя"], created: 0)
+        let dog = italian("dog", variant: "cane", created: 10)
+        let entries = [house, dog]
+
+        XCTAssertEqual(EntryQuery(searchText: "CASA", languageID: "it").apply(to: entries).map(\.id), [house.id])
+        XCTAssertEqual(EntryQuery(searchText: "оселя", languageID: "it").apply(to: entries).map(\.id), [house.id])
+        // У режимі IT англійські поля ready-рядка не шукаються; у режимі EN — навпаки.
+        XCTAssertEqual(EntryQuery(searchText: "house", languageID: "it").apply(to: entries), [])
+        XCTAssertEqual(EntryQuery(searchText: "casa", languageID: nil).apply(to: entries), [])
+        XCTAssertEqual(EntryQuery(searchText: "house").apply(to: entries).map(\.id), [house.id])
+        XCTAssertNil(EntryQuery().languageID, "default is the source language")
+    }
+
+    func testSearchFallbackRowsByEnglish() {
+        let house = italian("house", variant: "casa", created: 0)
+        let plain = italian("table", variant: nil, translations: ["стіл"], created: 10)
+        let entries = [house, plain]
+
+        XCTAssertEqual(EntryQuery(searchText: "table", languageID: "it").apply(to: entries).map(\.id), [plain.id])
+        XCTAssertEqual(EntryQuery(searchText: "стіл", languageID: "it").apply(to: entries).map(\.id), [plain.id])
+        XCTAssertEqual(EntryQuery(searchText: "", languageID: "it").apply(to: entries).count, 2, "nothing disappears")
+    }
+
+    func testAlphabeticalByItalianKey() {
+        // EN: apple < dog < house; IT: cane (dog) < casa (house) < mela (apple).
+        let apple = italian("apple", variant: "mela", created: 0)
+        let dog = italian("dog", variant: "cane", created: 10)
+        let house = italian("house", variant: "casa", created: 20)
+        let fallback = italian("bread", variant: nil, created: 30)
+        let entries = [house, apple, fallback, dog]
+
+        XCTAssertEqual(EntryQuery(sort: .alphabetical).apply(to: entries).map(\.word), ["apple", "bread", "dog", "house"])
+        XCTAssertEqual(EntryQuery(sort: .alphabetical, languageID: "it").apply(to: entries).map(\.word),
+                       ["bread", "dog", "house", "apple"], "fallback row sorted by its English word")
+        // Сортування за датою в режимі IT не змінюється.
+        XCTAssertEqual(EntryQuery(sort: .dateOldest, languageID: "it").apply(to: entries).map(\.word),
+                       ["apple", "dog", "house", "bread"])
+    }
 }

@@ -24,7 +24,7 @@ final class ServiceRequestHandlerTests: XCTestCase {
             repository: h.repository,
             processor: h.queue,
             settings: InMemorySettingsStore(),
-            registry: LanguagePairRegistry(pairs: [.englishUkrainian])
+            registry: LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly])
         )
         return (h, ServiceRequestHandler(useCase: useCase))
     }

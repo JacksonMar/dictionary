@@ -79,7 +79,7 @@ final class PendingQueueProcessorTests: XCTestCase {
     }
 
     private func make(_ script: [Result<LookupResult, ClaudeError>], gate: Gate? = nil,
-                      registry: LanguagePairRegistry = LanguagePairRegistry(pairs: [.englishUkrainian])) async throws -> QueueHarness {
+                      registry: LanguagePairRegistry = LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly])) async throws -> QueueHarness {
         let made = try await QueueHarness.make(script, gate: gate, registry: registry)
         harness = made
         return made

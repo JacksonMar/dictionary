@@ -155,6 +155,46 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(defaultsOnly.appearance, .system)
         XCTAssertEqual(defaultsOnly.pageSize, 25)
     }
+
+    // MARK: - M7: display language
+
+    func testDisplayLanguageDefaultsToNil() {
+        XCTAssertNil(UserDefaultsSettingsStore(defaults: defaults).displayLanguageID)
+        XCTAssertNil(InMemorySettingsStore().displayLanguageID)
+        XCTAssertEqual(UserDefaultsSettingsStore.displayLanguageKey, "displayLanguage")
+    }
+
+    func testDisplayLanguagePersists() {
+        let store = UserDefaultsSettingsStore(defaults: defaults)
+        store.displayLanguageID = "it"
+        XCTAssertEqual(store.displayLanguageID, "it")
+        XCTAssertEqual(defaults.string(forKey: "displayLanguage"), "it")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).displayLanguageID, "it", "new instance reads it")
+
+        // Невідомий рядок зберігається як є (перевірка — в AppModel).
+        store.displayLanguageID = "xx"
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).displayLanguageID, "xx")
+
+        store.displayLanguageID = nil
+        XCTAssertNil(store.displayLanguageID)
+        XCTAssertNil(defaults.object(forKey: "displayLanguage"))
+
+        store.displayLanguageID = "   "
+        XCTAssertNil(store.displayLanguageID, "blank → nil")
+        defaults.set("", forKey: "displayLanguage")
+        XCTAssertNil(UserDefaultsSettingsStore(defaults: defaults).displayLanguageID)
+    }
+
+    func testInMemoryDisplayLanguage() {
+        let store = InMemorySettingsStore(displayLanguageID: "it")
+        XCTAssertEqual(store.displayLanguageID, "it")
+        store.displayLanguageID = nil
+        XCTAssertNil(store.displayLanguageID)
+        store.displayLanguageID = " "
+        XCTAssertNil(store.displayLanguageID)
+        store.displayLanguageID = "it"
+        XCTAssertEqual(store.displayLanguageID, "it")
+    }
 }
 
 final class InMemorySecretStoreTests: XCTestCase {

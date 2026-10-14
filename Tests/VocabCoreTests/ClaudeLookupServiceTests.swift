@@ -281,7 +281,7 @@ final class ClaudeLookupServiceTests: XCTestCase {
         )
 
         await XCTAssertThrowsClaudeError(
-            try await service.lookup(text: "run", kind: .word, pair: .englishUkrainian),
+            try await service.lookup(text: "run", kind: .word, pair: .englishUkrainianSourceOnly),
             .missingAPIKey
         )
         XCTAssertEqual(MockURLProtocol.requestCount, 0)

@@ -37,7 +37,7 @@ final class M2ReviewRegressionTests: XCTestCase {
         let processor = EntryProcessor(
             repository: repository,
             lookup: lookup,
-            registry: LanguagePairRegistry(pairs: [.englishUkrainian]),
+            registry: LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly]),
             dateProvider: fixture.dateProvider
         )
         return (fixture, repository, processor)
@@ -200,7 +200,7 @@ final class M2ReviewRegressionTests: XCTestCase {
         let processor = EntryProcessor(
             repository: repository,
             lookup: lookup,
-            registry: LanguagePairRegistry(pairs: [.englishUkrainian]),
+            registry: LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly]),
             dateProvider: fixture.dateProvider,
             logger: logger
         )

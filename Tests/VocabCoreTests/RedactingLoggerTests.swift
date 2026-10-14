@@ -139,7 +139,7 @@ final class RedactingLoggerTests: XCTestCase {
         let processor = EntryProcessor(
             repository: repository,
             lookup: harness.service,
-            registry: LanguagePairRegistry(pairs: [.englishUkrainian]),
+            registry: LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly]),
             dateProvider: fixture.dateProvider
         )
 

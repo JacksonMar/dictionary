@@ -24,7 +24,7 @@ final class AddWordUseCaseTests: XCTestCase {
             repository: h.repository,
             processor: h.queue,
             settings: settings,
-            registry: LanguagePairRegistry(pairs: [.englishUkrainian])
+            registry: LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly])
         )
         return (h, useCase)
     }

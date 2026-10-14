@@ -61,7 +61,7 @@ final class QueueConcurrencyTests: XCTestCase {
             let processor = EntryProcessor(
                 repository: repository,
                 lookup: lookup,
-                registry: LanguagePairRegistry(pairs: [.englishUkrainian]),
+                registry: LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly]),
                 dateProvider: fixture.dateProvider
             )
             let queue = PendingQueueProcessor(repository: repository, processor: processor,
@@ -97,6 +97,7 @@ final class QueueConcurrencyTests: XCTestCase {
         case .failed: return "failed"
         case .skipped: return "skipped"
         case .notFound: return "notFound"
+        case .duplicate: return "duplicate"
         }
     }
 }

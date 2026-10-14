@@ -256,7 +256,7 @@ struct LookupHarness {
     }
 
     func lookupRun() async throws -> LookupResult {
-        try await service.lookup(text: "run", kind: .word, pair: .englishUkrainian)
+        try await service.lookup(text: "run", kind: .word, pair: .englishUkrainianSourceOnly)
     }
 }
 
@@ -380,7 +380,7 @@ struct QueueHarness {
     static func make(
         _ script: [Result<LookupResult, ClaudeError>],
         gate: Gate? = nil,
-        registry: LanguagePairRegistry = LanguagePairRegistry(pairs: [.englishUkrainian])
+        registry: LanguagePairRegistry = LanguagePairRegistry(pairs: [.englishUkrainianSourceOnly])
     ) async throws -> QueueHarness {
         let fixture = try StoreFixture()
         let repository = DictionaryRepository(store: fixture.store, dateProvider: fixture.dateProvider)
@@ -419,6 +419,8 @@ extension ProcessingResult {
         switch self {
         case .ready(let entry), .pending(let entry, _), .failed(let entry, _), .skipped(let entry):
             return entry
+        case .duplicate(let existing, _):
+            return existing
         case .notFound:
             return nil
         }
