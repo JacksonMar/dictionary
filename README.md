@@ -142,6 +142,22 @@ open /Applications/VocabApp.app
 
 ## Тести
 
+### Швидка перевірка на Mac (з нуля)
+
+Склонувати гілку, згенерувати проєкт і прогнати всі тести застосунку:
+
+```sh
+git clone -b claude/macos-dictionary-en-uk-context-obp1i3 https://github.com/JacksonMar/dictionary.git
+cd dictionary
+brew install xcodegen
+xcodegen generate
+xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-
+```
+
+Очікуваний результат у кінці виводу: `Executed 71 tests, with 0 failures` і `** TEST SUCCEEDED **`.
+
+### Окремо ядро і застосунок
+
 ```sh
 # Ядро (VocabCore): macOS або Linux (Docker)
 swift test
