@@ -8,7 +8,7 @@
 | M2 — Claude API | done | 1 | PASS (ітерація 1) |
 | M3 — Services | done | 1 | PASS (ітерація 1) |
 | M4 — Експорт/імпорт | done | 1 | PASS (ітерація 1) |
-| M5 — Полірування | blocked (CI) | 1 | FAIL — лише через відсутність macOS CI для нових тестів |
+| M5 — Полірування | done | 2 | PASS (ітерація 2, перевірка на реальному Mac) |
 
 ## Середовище перевірки
 
@@ -50,11 +50,19 @@
 
 ### M5 — ітерація 1: FAIL (інфраструктура, не код)
 - Linux: 354 тести, 0 падінь. Увесь виробничий код M5 зібрано й протестовано на macOS у run 38436944130 (коміт df958a1): `xcodebuild build` ✅, `xcodebuild test` ✅.
-- Коміт 91a651c додав лише тести (21 новий тест застосунку: AppModelM5Tests, LoginItemServiceTests, SpeechServiceTests). Run 38468460084 не отримав жодного раннера (runner_id 0, жодного кроку, навіть для Linux-job); повторний запуск через інтеграцію → 403. Найімовірніше, вичерпано ліміт хвилин / spending limit GitHub Actions (macOS-хвилини рахуються з множником).
+- Коміт 91a651c додав лише тести (19 нових тестів застосунку: AppModelM5Tests 13, LoginItemServiceTests 1, SpeechServiceTests 5). Run 38468460084 не отримав жодного раннера (runner_id 0, жодного кроку, навіть для Linux-job); повторний запуск через інтеграцію → 403. Найімовірніше, вичерпано ліміт хвилин / spending limit GitHub Actions (macOS-хвилини рахуються з множником).
 - Judge: блокуючих дефектів у коді немає; усі відкладені зауваження M2–M4 виправлено; README повний. Для PASS потрібен зелений macOS CI з новими тестами.
 - Що зробити: відновити GitHub Actions (Settings → Billing / spending limit) і перезапустити CI (Actions → CI → Re-run) або локально на Mac: `xcodegen generate && xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-`.
 - ⏳ `docs/manual-tests/M5.md` — menu bar, автозапуск, озвучення на реальному Mac.
 - 2026-10-14: користувач відновив ліміт, але перезапуск через інтеграцію заборонений (403 на rerun і workflow_dispatch). Рішення користувача: чекати оновлення ліміту. CI оптимізовано для економії macOS-хвилин: `macos-core` злито в `macos-app` (один macOS-раннер), зміни лише в `*.md`/`docs/`/`.claude/` не запускають CI, `concurrency` скасовує застарілі прогони.
+
+### M5 — ітерація 2: PASS
+- Користувач прогнав усе на реальному Mac (macOS 27.0.1, Apple M1, Xcode 27.0), звіт: `docs/reports/2026-10-14-mac-test-report.md`.
+  `xcodebuild test`: 69 тестів, 0 падінь; `swift test`: 354, 0 падінь; Release-збірка без попереджень.
+- Ручно підтверджено: без вікон при запуску, menu bar, Keychain, 401 → failed → «Повторити» → ready, ключа немає у файлі/логах, Services у Safari (додавання + дубль), сповіщення, автозапуск з /Applications.
+- Невизначеності на macOS 27: U1–U4 ✅, U7 ✅, U8 (з /Applications без requiresApproval) ✅, U10 ✅, U12 ✅. Не перевірено: U5 (холодний запуск через Services), U6 (Chrome не підтверджено логами, PDF), U9 після перезбірки, U11 вручну, U13.
+- P5 (два 401 за 1,2 с) — не дефект: два послідовні тригери користувача («Повторити» + «Повторити очікувані»); подвійна паралельна обробка неможлива.
+- Неблокуючі зауваження → етап M6: кількість тестів у README (71 → 69), примітка про повний Xcode для `swift test`, пошук сервісу через `grep VocabApp`, окрема log category для сповіщень, тригер повтору в логах.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
