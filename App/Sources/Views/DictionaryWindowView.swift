@@ -1,17 +1,24 @@
 import SwiftUI
 import VocabCore
 
-/// Головне вікно: список записів, пошук (слово/лема/переклад) і сортування (M5), ручне додавання, редагування,
-/// видалення, озвучення, «Повторити» для pending/failed, «Повторити всі» (якщо є pending/failed записи).
+/// Записи, що чекають підтвердження видалення (один або кілька виділених рядків).
+private struct PendingDeletion {
+    let entries: [Entry]
+}
+
+/// Головне вікно: таблиця записів поточної сторінки (M6), пошук (слово/лема/переклад) і сортування по всьому
+/// словнику (M5), пагінація (M6), ручне додавання, редагування, видалення, озвучення, «Повторити» для
+/// pending/failed, «Повторити всі» (якщо є pending/failed записи).
 struct DictionaryWindowView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isAdding = false
     @State private var editingEntry: Entry?
-    @State private var entryPendingDeletion: Entry?
+    @State private var pendingDeletion: PendingDeletion?
+    @State private var selection = Set<Entry.ID>()
 
     var body: some View {
         content
-            .frame(minWidth: 560, minHeight: 420)
+            .frame(minWidth: 720, minHeight: 420)
             .searchable(text: $model.query.searchText, placement: .toolbar, prompt: "Слово або переклад")
             .toolbar {
                 ToolbarItem(placement: .automatic) {
@@ -62,17 +69,19 @@ struct DictionaryWindowView: View {
                     .environmentObject(model)
             }
             .confirmationDialog(
-                "Видалити запис?",
+                deletionTitle,
                 isPresented: deletionDialogBinding,
                 titleVisibility: .visible,
-                presenting: entryPendingDeletion
-            ) { entry in
-                Button("Видалити «\(entry.word)»", role: .destructive) {
-                    Task { @MainActor in
-                        await model.delete(id: entry.id)
-                    }
+                presenting: pendingDeletion
+            ) { deletion in
+                Button(Self.deleteButtonTitle(for: deletion.entries), role: .destructive) {
+                    delete(deletion.entries)
                 }
                 Button("Скасувати", role: .cancel) {}
+            }
+            // Зміна сторінки (у т.ч. скидання на 1 після пошуку/сортування/розміру) скидає виділення.
+            .onChange(of: model.pageNumber) { _ in
+                selection.removeAll()
             }
             .alert("Помилка", isPresented: operationErrorBinding) {
                 Button("OK") {
@@ -109,35 +118,75 @@ struct DictionaryWindowView: View {
                 if model.entries.isEmpty {
                     messageView(systemImage: "character.book.closed", text: "Словник порожній. Додайте слово кнопкою «+».")
                 } else {
-                    let visible = model.visibleEntries
-                    if visible.isEmpty {
+                    let page = model.currentPage
+                    if page.totalCount == 0 {
                         messageView(
                             systemImage: "magnifyingglass",
                             text: "Нічого не знайдено за запитом «\(model.query.normalizedSearchText)»."
                         )
                     } else {
-                        List(visible) { entry in
-                            EntryRowView(
-                                entry: entry,
-                                isRetrying: model.retryingIDs.contains(entry.id),
-                                onEdit: { editingEntry = entry },
-                                onDelete: { entryPendingDeletion = entry },
-                                onRetry: model.isClaudeAvailable ? { retry(entry) } : nil,
-                                onSpeak: model.isSpeechAvailable
-                                    ? { text in model.speak(text, languagePair: entry.languagePair) }
-                                    : nil
-                            )
-                        }
+                        pageView(page)
                     }
                 }
             }
         }
     }
 
-    private func retry(_ entry: Entry) {
-        Task { @MainActor in
-            await model.retry(id: entry.id)
+    private func pageView(_ page: EntryPage) -> some View {
+        VStack(spacing: 0) {
+            EntryTableView(
+                entries: page.entries,
+                selection: $selection,
+                retryingIDs: model.retryingIDs,
+                canRetry: model.isClaudeAvailable,
+                canSpeak: model.isSpeechAvailable,
+                onEdit: { entry in editingEntry = entry },
+                onDelete: { entries in pendingDeletion = PendingDeletion(entries: entries) },
+                onRetry: { entries in retry(entries) },
+                onSpeak: { text, entry in model.speak(text, languagePair: entry.languagePair) }
+            )
+            if page.pageCount > 1 {
+                Divider()
+                PaginationBar(
+                    page: page,
+                    onPrevious: { model.previousPage() },
+                    onNext: { model.nextPage() }
+                )
+            }
         }
+    }
+
+    /// «Повторити» для одного чи кількох записів — послідовно (черга й так обробляє записи по одному).
+    private func retry(_ entries: [Entry]) {
+        let ids = entries.map(\.id)
+        Task { @MainActor in
+            for id in ids {
+                await model.retry(id: id)
+            }
+        }
+    }
+
+    /// Видалення після підтвердження; виділення скидається.
+    private func delete(_ entries: [Entry]) {
+        let ids = entries.map(\.id)
+        selection.subtract(ids)
+        Task { @MainActor in
+            for id in ids {
+                guard await model.delete(id: id) else { break }
+            }
+        }
+    }
+
+    private var deletionTitle: String {
+        let count = pendingDeletion?.entries.count ?? 0
+        return count > 1 ? "Видалити записи (\(count))?" : "Видалити запис?"
+    }
+
+    private static func deleteButtonTitle(for entries: [Entry]) -> String {
+        if entries.count == 1, let entry = entries.first {
+            return "Видалити «\(entry.word)»"
+        }
+        return "Видалити вибрані (\(entries.count))"
     }
 
     private func messageView(systemImage: String, text: String) -> some View {
@@ -155,10 +204,10 @@ struct DictionaryWindowView: View {
 
     private var deletionDialogBinding: Binding<Bool> {
         Binding(
-            get: { entryPendingDeletion != nil },
+            get: { pendingDeletion != nil },
             set: { isPresented in
                 if !isPresented {
-                    entryPendingDeletion = nil
+                    pendingDeletion = nil
                 }
             }
         )

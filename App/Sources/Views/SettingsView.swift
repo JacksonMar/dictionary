@@ -3,7 +3,7 @@ import SwiftUI
 import VocabCore
 
 /// Налаштування: API-ключ (лише в Keychain, значення ніколи не показується), модель Claude (M2),
-/// автозапуск (M5, `SMAppService`), перенесення словника — експорт/імпорт (M4).
+/// вигляд — тема й розмір сторінки (M6), автозапуск (M5, `SMAppService`), перенесення словника — експорт/імпорт (M4).
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var apiKeyInput = ""
@@ -57,6 +57,25 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             } header: {
                 Text("Модель")
+                    .font(.headline)
+            }
+
+            Section {
+                Picker("Тема", selection: appearanceBinding) {
+                    ForEach(AppAppearance.allCases, id: \.self) { appearance in
+                        Text(appearance.title).tag(appearance)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                Picker("Записів на сторінці", selection: pageSizeBinding) {
+                    ForEach(Pagination.pageSizeOptions, id: \.self) { size in
+                        Text(String(size)).tag(size)
+                    }
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+            } header: {
+                Text("Вигляд")
                     .font(.headline)
             }
 
@@ -120,6 +139,20 @@ struct SettingsView: View {
             model.refreshLoginItemState()
         }
         .importModeDialog(model: model)
+    }
+
+    private var appearanceBinding: Binding<AppAppearance> {
+        Binding(
+            get: { model.appearance },
+            set: { model.setAppearance($0) }
+        )
+    }
+
+    private var pageSizeBinding: Binding<Int> {
+        Binding(
+            get: { model.pageSize },
+            set: { model.setPageSize($0) }
+        )
     }
 
     private var launchAtLoginBinding: Binding<Bool> {

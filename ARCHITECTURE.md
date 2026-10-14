@@ -1,6 +1,6 @@
 # ARCHITECTURE — VocabApp (EN → UK словник для macOS)
 
-Документ визначає структуру, типи, формати, модель помилок, потоки виконання та план етапів M1–M6 (M6 — фідбек з ручного тестування на Mac).
+Документ визначає структуру, типи, формати, модель помилок, потоки виконання та план етапів M1–M7 (M6 — фідбек з ручного тестування на Mac; M7 — перемикач EN | IT з італійською версією записів, §3.2, §7.7, §8.4).
 Мова — українська, ідентифікатори коду — англійською. Джерело вимог: `docs/REQUIREMENTS.md`.
 
 ---
@@ -19,6 +19,10 @@
 5. **API-ключ** існує лише в `SecretStore` (Keychain у застосунку) і в заголовку `x-api-key` одного `URLRequest`.
    Ніколи не потрапляє в лог, JSON словника, `UserDefaults`, повідомлення про помилки.
 6. **Нова мовна пара** (`it-uk`) = новий файл з `LanguagePair`-визначенням + реєстрація; код ядра не змінюється.
+   **Нова мова відображення** (M7, напр. `de` поряд з `it`) = новий файл з `RenderingLanguage` + додавання в
+   `renderings` пари; код ядра теж не змінюється (§3.2).
+7. **Економія токенів (M7)**: жодних повторних запитів за даними, що вже є у файлі; нове слово — один запит на всі
+   мови; доповнення старих записів — пакетами (§7.7, §8.4).
 
 ---
 
@@ -28,23 +32,26 @@
 Package.swift                      # swift-tools-version:5.9, VocabCore + VocabCoreTests
 project.yml                        # XcodeGen → VocabApp.xcodeproj (не комітиться, .gitignore)
 Sources/VocabCore/
-  Models/        Entry.swift, Example.swift, EntryStatus.swift, EntryDraft.swift, DictionaryFile.swift
-  Languages/     LanguagePair.swift, LanguagePairRegistry.swift, EnglishUkrainian.swift
+  Models/        Entry.swift, Example.swift, EntryStatus.swift, EntryDraft.swift, DictionaryFile.swift,
+                 EntryVariant.swift (M7)
+  Languages/     LanguagePair.swift, LanguagePairRegistry.swift, EnglishUkrainian.swift,
+                 RenderingLanguage.swift, Italian.swift (M7)
   Text/          TextNormalizer.swift, SelectionValidator.swift
   Support/       DateProvider.swift, AppPaths.swift, JSONCoding.swift, FileErrorText.swift (україномовні тексти файлових помилок)
   Storage/       FileSystem.swift, FileDictionaryStore.swift, BackupManager.swift,
                  StorageError.swift, LoadResult.swift
   Repository/    DictionaryRepository.swift, RepositoryError.swift, EntryQuery.swift (EntryQuery + EntrySort),
-                 Pagination.swift (Pagination + EntryPage, M6)
+                 Pagination.swift (Pagination + EntryPage, M6), EntryDisplay.swift (M7)
   Claude/        HTTPTransport.swift, ClaudeConfiguration.swift,
                  ClaudeRequestBuilder.swift, ClaudeAPIClient.swift, ClaudeError.swift,
-                 PromptBuilder.swift, LookupResponseParser.swift, ClaudeLookupService.swift
+                 PromptBuilder.swift, LookupResponseParser.swift, ClaudeLookupService.swift,
+                 VariantBatchLookup.swift, VariantPromptBuilder.swift, VariantBatchResponseParser.swift (M7)
   Processing/    ErrorDisposition.swift, RetryPolicy.swift, EntryProcessor.swift, PendingQueueProcessor.swift,
-                 ProcessingTrigger.swift (+ QueueLog, M6)
+                 ProcessingTrigger.swift (+ QueueLog, M6), VariantBackfillProcessor.swift (M7)
   UseCases/      AddWordUseCase.swift (+ AddWordOutcome), ServiceRequestHandler.swift (+ ServiceResponse),
                  NotificationText.swift (+ NotificationContent)
   Transfer/      DictionaryExporter.swift, DictionaryImporter.swift, ImportMerger.swift,
-                 ImportReport.swift, ImportError.swift, DictionaryTransferService.swift
+                 ImportReport.swift, ImportError.swift, DictionaryTransferService.swift, VariantMerge.swift (M7)
   Security/      SecretStore.swift (+ SecretKey, SecretStoreError), InMemorySecretStore.swift, RedactingLogger.swift
   Settings/      SettingsStore.swift, AppAppearance.swift (M6)
 Tests/VocabCoreTests/              # усі тести ядра (Linux + macOS), Fixtures/*.json як рядкові константи у коді
@@ -62,7 +69,7 @@ App/
              LoginItemService.swift (LoginItemManaging), SpeechService.swift (SpeechSpeaking), FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift,
              AppearanceController.swift (AppearanceApplying, M6)
   Tests/                           # VocabAppTests (лише macOS)
-docs/manual-tests/M1.md … M6.md
+docs/manual-tests/M1.md … M7.md
 README.md                          # M5
 ```
 
@@ -239,6 +246,80 @@ extension LanguagePair { public static let englishUkrainian: LanguagePair }  // 
 
 Додавання `it-uk`: файл `ItalianUkrainian.swift` з `static let italianUkrainian` і `registry.register(...)` у
 композиційному корені. `Entry.languagePair` — рядок, тож записи з невідомою парою зберігаються/імпортуються без втрат.
+
+### 3.2 Варіанти відображення (M7: перемикач EN | IT)
+
+**Що це.** Італійська — не окремий словник і не окрема `LanguagePair`, а **паралельне відображення того самого
+запису**: для англійського запису `run` зберігається італійський відповідник `correre` з власними леммою, частиною мови,
+IPA, українськими перекладами (того самого значення — модель повертає переклади саме італійського слова, тож вони можуть
+трохи відрізнятися) і прикладом італійською + переклад українською. Первинні дані запису (англійські поля `Entry`)
+лишаються джерелом істини: дедуплікація, `createdAt`, черга pending, Services — як раніше, лише за англійським ключем.
+
+```swift
+// Languages/RenderingLanguage.swift
+public struct RenderingLanguage: Hashable, Sendable {
+  public let id: String                    // "it" — ключ у Entry.variants; стабільний, пишеться у файл
+  public let shortTitle: String            // "IT" — підпис сегмента перемикача
+  public let languageName: String          // "Italian" — підставляється в промти
+  public let speechLanguageCode: String    // "it-IT"
+  public let prompt: RenderingPromptTemplate
+}
+public struct RenderingPromptTemplate: Hashable, Sendable {
+  public let combinedInstruction: String   // додається до system-промту пари в комбінованому запиті (§7.7)
+  public let batchSystem: String           // system-промт пакетного доповнення (§7.7)
+  public let batchUser: String             // шаблон user-повідомлення з плейсхолдером {{ITEMS}}
+  // Плейсхолдери в усіх трьох: {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}} (з LanguagePair), {{LANGUAGE}} (languageName),
+  // {{ID}} (id). Тож одна RenderingLanguage працює з будь-якою парою.
+}
+extension RenderingLanguage { public static let italian: RenderingLanguage }   // Languages/Italian.swift
+
+// Languages/LanguagePair.swift — два нові поля з дефолтами в init (наявні виклики init компілюються без змін):
+public struct LanguagePair {
+  …
+  public let sourceShortTitle: String      // "EN"; default — id до першого "-", uppercased
+  public let renderings: [RenderingLanguage]   // default []; .englishUkrainian = [.italian]
+  public func rendering(id: String) -> RenderingLanguage?
+}
+
+// Models/EntryVariant.swift
+public struct EntryVariant: Codable, Equatable, Sendable {
+  public var word: String?                 // nil для pending/failed
+  public var lemma: String?
+  public var partOfSpeech: String?         // "phrase" для фраз
+  public var transcription: String?        // IPA мови варіанта, напр. "/korˈrere/"
+  public var translations: [String]        // українські; порожній для pending/failed
+  public var example: Example?             // source — речення мовою варіанта, translation — українською
+  public var status: EntryStatus           // ready | pending | failed (той самий enum)
+  public var lastError: String?
+  public var sourceKey: String             // TextNormalizer.key(entry.word) на момент генерації (D23)
+  public var updatedAt: Date               // власний час варіанта; Entry.updatedAt НЕ змінює (D24)
+}
+public enum VariantState: Equatable, Sendable { case missing, stale, pending, failed, ready }
+extension Entry {
+  public var variants: [String: EntryVariant]?           // нове опційне поле Entry; nil/порожній → ключ у JSON відсутній
+  public func variantState(_ languageID: String) -> VariantState    // stale = sourceKey != key(word)
+  public func readyVariant(_ languageID: String) -> EntryVariant?   // лише ready і не stale
+}
+```
+
+- **JSON**: `"variants": {"it": {"word": "correre", "lemma": "correre", "partOfSpeech": "verb",
+  "transcription": "/korˈrere/", "translations": ["бігти"], "example": {"source": "Lei corre ogni mattina.",
+  "translation": "Вона бігає щоранку."}, "status": "ready", "sourceKey": "run", "updatedAt": "2026-10-14T10:00:00Z"}}`.
+  Ключі camelCase, `encodeIfPresent`, той самий `JSONCoding`. Порожній словник нормалізується в `nil` (не пишеться),
+  тож файл без італійських даних **байт-у-байт** такий самий, як у M6.
+- **schemaVersion лишається 1** (D21): поле адитивне й опційне; M1–M6 використовують синтезований `Codable`, який
+  ігнорує невідомі ключі, тож старі версії застосунку читають новий файл (але при наступному збереженні втратять
+  `variants` — прийнятно: це лише кеш, відновлюється доповненням). Нові версії читають старі файли без міграції.
+- **Стійке декодування** (D22): `Entry` отримує власний `init(from:)`, у якому `variants` декодується поелементно —
+  некоректний варіант (не той тип, невідомий `status`, відсутній `sourceKey`/`updatedAt`) **відкидається**, а не ламає
+  запис. Інакше один зіпсований варіант перетворив би весь `dictionary.json` на «corrupted» (§5). Решта полів
+  декодується як раніше (суворо). `encode(to:)` — синтезований еквівалент (ручна реалізація, якщо компілятор вимагатиме).
+- **Інваріант**: `variants` змінюються лише через `DictionaryRepository.setVariants` / `update(_:replacingVariants: true)` (§6).
+- **Зв'язок з `it-uk`**: `LanguagePair` описує **мову джерела** (з якої мови додаються слова через Services, ключ
+  дедуплікації, черга). `it-uk` у майбутньому — окрема пара для італійських виділень зі своїми записами
+  (`Entry.languagePair = "it-uk"`). `RenderingLanguage` описує **додаткову мову показу** записів уже існуючої пари.
+  Вони незалежні: пара `it-uk` може мати `renderings: []` або, напр., `[.english]`; додавання `it-uk` не торкається
+  `variants` записів `en-uk`. Ідентифікатори варіантів (`"it"`) — коди мов, не пар.
 
 ---
 

@@ -234,7 +234,7 @@ private struct EntryContextMenu: View {
             }
         }
         if canRetry && !retryable.isEmpty {
-            Button(retryable.count > 1 ? "Повторити (\(retryable.count))" : "Повторити") {
+            Button(retryTitle) {
                 onRetry(retryable)
             }
         }
@@ -250,10 +250,18 @@ private struct EntryContextMenu: View {
         }
         if !entries.isEmpty {
             Divider()
-            Button(entries.count > 1 ? "Видалити (\(entries.count))…" : "Видалити…") {
+            Button(deleteTitle) {
                 onDelete(entries)
             }
         }
+    }
+
+    private var retryTitle: String {
+        retryable.count > 1 ? "Повторити (\(retryable.count))" : "Повторити"
+    }
+
+    private var deleteTitle: String {
+        entries.count > 1 ? "Видалити (\(entries.count))…" : "Видалити…"
     }
 
     private var singleEntry: Entry? {
