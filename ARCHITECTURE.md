@@ -935,6 +935,39 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 `requiresApproval` веде в Login Items; озвучення слова й фрази; пошук «біг» знаходить `run`; сортування;
 README-інструкції відтворювані на чистому користувачі.
 
+
+### M6 — Фідбек з ручного тестування
+
+Джерело: `docs/reports/2026-10-14-mac-test-report.md` (§6 P1–P5, §7 UX-побажання). Модель даних і формат файлу не змінюються.
+
+**Файли.** Ядро: `Repository/Pagination.swift` (§6), `Settings/AppAppearance.swift` + нові поля в `Settings/SettingsStore.swift` (§7.6),
+`Processing/ProcessingTrigger.swift` (§8.3). App: `Views/EntryTableView.swift` (новий; `EntryRowView.swift` видалити),
+`Views/PaginationBar.swift`, `Views/DictionaryWindowView.swift`, `Views/SettingsView.swift`, `Platform/AppearanceController.swift`,
+`AppModel.swift`, `AppDelegate.swift` (тема на старті, логер `notifications`, тригери). Документи: `README.md`,
+`docs/manual-tests/M3.md`, `docs/manual-tests/M6.md`. Тести: `Tests/VocabCoreTests/PaginationTests.swift`,
+`ProcessingTriggerTests.swift`, доповнення `SettingsStoreTests.swift`; `App/Tests/AppModelM6Tests.swift`,
+`App/Tests/AppearanceControllerTests.swift` (`SpyAppearanceApplier` — у файлі тестів M6).
+
+| КП | Перевірка |
+|---|---|
+| M6.1 Таблиця: колонки Слово / Транскрипція / Переклад / Приклад + статус/дії; контекстне меню й подвійний клік | ⏳ manual (M6.md A) + збірка CI |
+| M6.2 Пагінація (чиста логіка) | `PaginationTests`: `testDefaultPageSizeIs25`, `testInvalidPageSizeFallsBackToDefault`, `testPageCountRoundsUp`, `testEmptyListHasOnePage`, `testFirstPageSlice`, `testLastPartialPage`, `testClampBelowOneAndAboveLast`, `testPageClampsRequestedNumber`, `testHasPreviousAndHasNext`, `testLabelText` |
+| M6.3 Стан сторінки в `AppModel` | `AppModelM6Tests`: `testCurrentPageUsesPageSize`, `testNextAndPreviousPage`, `testSearchChangeResetsPageToOne`, `testSortChangeResetsPageToOne`, `testPageSizeChangeResetsPageAndPersists`, `testDeleteOnLastPageClampsPage`, `testSearchAppliesToWholeDictionaryNotPage` |
+| M6.4 Тема: default, збереження, застосування | `SettingsStoreTests`: `testAppearanceDefaultsToSystem`, `testAppearancePersistsInUserDefaults`, `testUnknownAppearanceFallsBackToSystem`, `testPageSizeDefaultAndPersist`, `testInMemoryStoreAppearanceAndPageSize`; `AppModelM6Tests`: `testAppearanceLoadedFromSettings`, `testSetAppearancePersistsAndApplies` (spy); `AppearanceControllerTests`: `testApplySetsNSAppAppearance` (light → `.aqua`, dark → `.darkAqua`, system → `nil`; `tearDown` повертає `nil`) + ⏳ manual (U14) |
+| M6.5 Тригер повтору в логах без секретів (P5) | `ProcessingTriggerTests`: `testStartedMessageContainsTrigger`, `testFinishedMessageCountsResults`, `testMessagesContainNoWordOrErrorText`; `AppModelM6Tests`: `testRetryLogsManualTrigger`, `testRetryAllLogsRetryAllTrigger` (лог через `RecordingLogSink` з `App/Tests/APIKeyCacheTests.swift`) |
+| M6.6 Окрема log category `notifications` (P4) | Рев'ю коду `AppDelegate` + ⏳ manual: `log show --predicate 'subsystem == "com.vocabapp.VocabApp" AND category == "notifications"'` |
+| M6.7 Документація (P1–P3) | Judge: README — кількість тестів застосунку з поясненням, як її отримано (`xcodebuild test` → рядок `Executed N tests`; або `grep -rh "func test" App/Tests \| wc -l`), M5 = 69, після M6 оновити; примітка: `swift test` на macOS потребує повного Xcode.app (`xcode-select -p` → `/Applications/Xcode.app/...`), з Command Line Tools XCTest недоступний; README і `M3.md`: шукати сервіс через `pbs -dump \| grep -A8 VocabApp` — кирилиця в дампі екранована (`\U0414…`), тож `grep "Додати в словник"` нічого не знаходить |
+
+`M6.md` (реальний Mac, записати `sw_vers`): **A. Таблиця** — 4 колонки + статус, ширина колонок змінюється, довгий
+переклад обрізано з підказкою, бейджі pending/failed, «Повторити», озвучення, контекстне меню, подвійний клік → редактор,
+видалення. **B. Пагінація** — ≥ 60 записів (імпорт тестового файлу): 25 на сторінці, «Сторінка 1 з 3», крайні кнопки
+вимкнено; пошук/сортування → сторінка 1; видалити єдиний запис останньої сторінки → перехід на попередню;
+20/30 у Settings діють одразу й зберігаються після перезапуску. **C. Тема** — Світла/Темна/Як у системі при відкритих
+вікнах «Словник» і «Налаштування» (перемальовуються без перезапуску), sheet редактора, панелі імпорту/експорту, меню
+в menu bar (записати фактичну поведінку — U14); тема зберігається після перезапуску; «Як у системі» слідує зміні
+системної теми. **D. Логи** — «Повторити» → `trigger=manual`, «Повторити очікувані» → `trigger=retryAll`, вимкнути/
+увімкнути Wi-Fi → `trigger=network`; у логах немає ключа; сповіщення — у category `notifications`. VoiceOver не перевіряється.
+
 ---
 
 ## 16. Правила для Developer / Tester
