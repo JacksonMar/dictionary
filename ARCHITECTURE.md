@@ -673,11 +673,13 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   (`nil` → відповідна функція недоступна); `@Published entries`, `query`, `loadError`, `lastReport`, `lastServiceMessage: String?` (текст останнього результату Services — показується в меню, якщо сповіщення заборонені), `hasAPIKey`; підписка
   на `repository.changes()` у `Task`; методи `addManual`, `addViaClaude`, `update`, `delete`, `retry`,
   `retryAll`, `export(to:)`, `import(from:mode:)`, `saveAPIKey`, `setModel`.
-  **M6:** новий параметр init `settings: SettingsStore? = nil` (nil → `InMemorySettingsStore()`; `AppDelegate` передає той самий
-  `UserDefaultsSettingsStore`, що й у `ClaudeServices`) і `appearanceApplier: AppearanceApplying? = nil`.
+  **M6:** init `AppModel(..., settings: SettingsStore? = nil, appearanceApplier: AppearanceApplying? = nil)`; сховище
+  визначається **лише** правилом `self.settings = settings ?? claude?.settings ?? InMemorySettingsStore()` — окремого
+  сховища поряд із Claude немає. `AppDelegate` параметр `settings:` не передає (бере `claude.settings`, той самий
+  `UserDefaultsSettingsStore`); явний `settings:` — лише для тестів/конфігурації без Claude.
   `@Published pageNumber: Int = 1`, `@Published private(set) pageSize: Int`, `@Published private(set) appearance: AppAppearance`;
   `var currentPage: EntryPage` = `Pagination(pageSize:).page(pageNumber, of: query.apply(to: entries))`;
-  `nextPage()`, `previousPage()`, `setPageSize(_:)` (зберігає, `pageNumber = 1`), `setAppearance(_:)` (зберігає + `applier.apply`).
+  `nextPage()`, `previousPage()`, `setPageSize(_:)` (значення поза `Pagination.pageSizeOptions` ігнорується; інакше зберігає й `pageNumber = 1`), `setAppearance(_:)` (зберігає + `applier.apply`).
   `query` має `didSet`: якщо змінився `searchText` або `sort` → `pageNumber = 1`. Після кожного `apply(entries)` (зміни
   репозиторію, видалення, імпорт) → `pageNumber = pagination.clamp(pageNumber, totalCount: відфільтрованих)`.
   Тригери черги: `retry(id:)` → `.manual`, `retryAll()` → `.retryAll`, `processDue()` → `.due`,
@@ -698,7 +700,7 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   `hasPrevious/hasNext`); прихована, якщо `pageCount == 1`. Зміна сторінки скидає `selection`. Порожній стан — як у M5.
 - **Налаштування (M6)** — `SettingsView`: секція «Вигляд»: `Picker("Тема", …)` з `AppAppearance.allCases`
   (`.pickerStyle(.radioGroup)`) і `Picker("Записів на сторінці", …)` з `Pagination.pageSizeOptions`.
-- **Тема (M6)** — `protocol AppearanceApplying: AnyObject { func apply(_ appearance: AppAppearance) }`
+- **Тема (M6)** — `@MainActor protocol AppearanceApplying: AnyObject { func apply(_ appearance: AppAppearance) }`
   (`Platform/AppearanceController.swift`), реалізація `AppearanceController` (`@MainActor`): `NSApp.appearance =`
   `nil` (`.system`) / `NSAppearance(named: .aqua)` / `NSAppearance(named: .darkAqua)`. Обрано `NSApp.appearance`, а не
   `preferredColorScheme`: воно наслідується всіма вікнами застосунку (обидві `Window`-сцени, sheet-и, алерти,
@@ -729,7 +731,7 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 - `SpeechService: SpeechSpeaking` (`speak(_:languageCode:)`, `stop()`, `makeUtterance(text:languageCode:)`) — `AVSpeechSynthesizer`, `AVSpeechUtterance(string:)`, `voice = AVSpeechSynthesisVoice(language: pair.speechLanguageCode)`.
 - `FilePanels` — `NSSavePanel` (`nameFieldStringValue = "dictionary.json"`, `allowedContentTypes = [.json]`),
   `NSOpenPanel` (`allowedContentTypes = [.json]`, один файл).
-- `NetworkMonitor` — `NWPathMonitor` на власній черзі; при переході в `.satisfied` → `Task { await processor.processAll(ignoringBackoff: true) }`.
+- `NetworkMonitor` — `NWPathMonitor` на власній черзі; при переході в `.satisfied` → `Task { @MainActor in await model.processPending(trigger: .network) }` (M6; усередині — `processAll(ignoringBackoff: true)`).
 - `OSLogSink: LogSink` — `os.Logger(subsystem: "com.vocabapp.VocabApp", category:)`, повідомлення з `privacy: .public`
   (вони вже відредаговані `RedactingLogger`). Категорії (M6): `claude` (HTTP, черга, ключ) і `notifications`
   (`NotificationService` отримує окремий `RedactingLogger(sink: OSLogSink(category: "notifications"), secretsProvider: keyCache.secrets)`). Ім'я `RedactingLogger` обрано, щоб не конфліктувати з `os.Logger` в app-таргеті.
@@ -941,7 +943,7 @@ README-інструкції відтворювані на чистому кор�
 Джерело: `docs/reports/2026-10-14-mac-test-report.md` (§6 P1–P5, §7 UX-побажання). Модель даних і формат файлу не змінюються.
 
 **Файли.** Ядро: `Repository/Pagination.swift` (§6), `Settings/AppAppearance.swift` + нові поля в `Settings/SettingsStore.swift` (§7.6),
-`Processing/ProcessingTrigger.swift` (§8.3). App: `Views/EntryTableView.swift` (новий; `EntryRowView.swift` видалити),
+`Processing/ProcessingTrigger.swift` (§8.3). App: `Views/EntryTableView.swift` (новий; `EntryRowView.swift` видалити — XcodeGen збирає джерела з каталогу `App/Sources`, тож після `xcodegen generate` файл зникає з проєкту автоматично, правити `project.yml` не треба),
 `Views/PaginationBar.swift`, `Views/DictionaryWindowView.swift`, `Views/SettingsView.swift`, `Platform/AppearanceController.swift`,
 `AppModel.swift`, `AppDelegate.swift` (тема на старті, логер `notifications`, тригери). Документи: `README.md`,
 `docs/manual-tests/M3.md`, `docs/manual-tests/M6.md`. Тести: `Tests/VocabCoreTests/PaginationTests.swift`,
@@ -952,11 +954,11 @@ README-інструкції відтворювані на чистому кор�
 |---|---|
 | M6.1 Таблиця: колонки Слово / Транскрипція / Переклад / Приклад + статус/дії; контекстне меню й подвійний клік | ⏳ manual (M6.md A) + збірка CI |
 | M6.2 Пагінація (чиста логіка) | `PaginationTests`: `testDefaultPageSizeIs25`, `testInvalidPageSizeFallsBackToDefault`, `testPageCountRoundsUp`, `testEmptyListHasOnePage`, `testFirstPageSlice`, `testLastPartialPage`, `testClampBelowOneAndAboveLast`, `testPageClampsRequestedNumber`, `testHasPreviousAndHasNext`, `testLabelText` |
-| M6.3 Стан сторінки в `AppModel` | `AppModelM6Tests`: `testCurrentPageUsesPageSize`, `testNextAndPreviousPage`, `testSearchChangeResetsPageToOne`, `testSortChangeResetsPageToOne`, `testPageSizeChangeResetsPageAndPersists`, `testDeleteOnLastPageClampsPage`, `testSearchAppliesToWholeDictionaryNotPage` |
-| M6.4 Тема: default, збереження, застосування | `SettingsStoreTests`: `testAppearanceDefaultsToSystem`, `testAppearancePersistsInUserDefaults`, `testUnknownAppearanceFallsBackToSystem`, `testPageSizeDefaultAndPersist`, `testInMemoryStoreAppearanceAndPageSize`; `AppModelM6Tests`: `testAppearanceLoadedFromSettings`, `testSetAppearancePersistsAndApplies` (spy); `AppearanceControllerTests`: `testApplySetsNSAppAppearance` (light → `.aqua`, dark → `.darkAqua`, system → `nil`; `tearDown` повертає `nil`) + ⏳ manual (U14) |
+| M6.3 Стан сторінки в `AppModel` | `AppModelM6Tests`: `testCurrentPageUsesPageSize`, `testNextAndPreviousPage`, `testSearchChangeResetsPageToOne`, `testSortChangeResetsPageToOne`, `testPageSizeChangeResetsPageAndPersists`, `testDeleteOnLastPageClampsPage`, `testRepositoryChangeClampsPage` (зміна з `repository.changes()`, не через `delete`), `testSetPageSizeIgnoresUnsupportedValue` (напр. 50 → лишається поточний, нічого не зберігається), `testSearchAppliesToWholeDictionaryNotPage`, `testAppModelUsesSameSettingsStoreAsClaude` (без явного `settings:` зміна теми/розміру видна в `claude.settings`) |
+| M6.4 Тема: default, збереження, застосування | `SettingsStoreTests`: `testAppearanceDefaultsToSystem`, `testAppearancePersistsInUserDefaults`, `testUnknownAppearanceFallsBackToSystem`, `testPageSizeDefaultAndPersist`, `testInvalidPageSizeFallsBackToDefault`, `testInMemoryStoreAppearanceAndPageSize`; `AppModelM6Tests`: `testAppearanceLoadedFromSettings`, `testSetAppearancePersistsAndApplies` (spy); `AppearanceControllerTests`: `testApplySetsNSAppAppearance` (light → `.aqua`, dark → `.darkAqua`, system → `nil`; `tearDown` повертає `nil`) + ⏳ manual (U14) |
 | M6.5 Тригер повтору в логах без секретів (P5) | `ProcessingTriggerTests`: `testStartedMessageContainsTrigger`, `testFinishedMessageCountsResults`, `testMessagesContainNoWordOrErrorText`; `AppModelM6Tests`: `testRetryLogsManualTrigger`, `testRetryAllLogsRetryAllTrigger` (лог через `RecordingLogSink` з `App/Tests/APIKeyCacheTests.swift`) |
 | M6.6 Окрема log category `notifications` (P4) | Рев'ю коду `AppDelegate` + ⏳ manual: `log show --predicate 'subsystem == "com.vocabapp.VocabApp" AND category == "notifications"'` |
-| M6.7 Документація (P1–P3) | Judge: README — кількість тестів застосунку з поясненням, як її отримано (`xcodebuild test` → рядок `Executed N tests`; або `grep -rh "func test" App/Tests \| wc -l`), M5 = 69, після M6 оновити; примітка: `swift test` на macOS потребує повного Xcode.app (`xcode-select -p` → `/Applications/Xcode.app/...`), з Command Line Tools XCTest недоступний; README і `M3.md`: шукати сервіс через `pbs -dump \| grep -A8 VocabApp` — кирилиця в дампі екранована (`\U0414…`), тож `grep "Додати в словник"` нічого не знаходить |
+| M6.7 Документація (P1–P3) | Judge: README — кількість тестів застосунку з поясненням, як її отримано (`xcodebuild test` → рядок `Executed N tests`; або `grep -rh "func test" App/Tests \| wc -l`), M5 = 69; **Developer після M6 оновлює число в README** на фактичне `Executed N tests` з CI/Mac; примітка: `swift test` на macOS потребує повного Xcode.app (`xcode-select -p` → `/Applications/Xcode.app/...`), з Command Line Tools XCTest недоступний; README і `M3.md`: шукати сервіс через `pbs -dump \| grep -A8 VocabApp` — кирилиця в дампі екранована (`\U0414…`), тож `grep "Додати в словник"` нічого не знаходить |
 
 `M6.md` (реальний Mac, записати `sw_vers`): **A. Таблиця** — 4 колонки + статус, ширина колонок змінюється, довгий
 переклад обрізано з підказкою, бейджі pending/failed, «Повторити», озвучення, контекстне меню, подвійний клік → редактор,
