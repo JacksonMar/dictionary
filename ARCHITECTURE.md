@@ -1,6 +1,6 @@
 # ARCHITECTURE — VocabApp (EN → UK словник для macOS)
 
-Документ визначає структуру, типи, формати, модель помилок, потоки виконання та план етапів M1–M5.
+Документ визначає структуру, типи, формати, модель помилок, потоки виконання та план етапів M1–M6 (M6 — фідбек з ручного тестування на Mac).
 Мова — українська, ідентифікатори коду — англійською. Джерело вимог: `docs/REQUIREMENTS.md`.
 
 ---
@@ -34,17 +34,19 @@ Sources/VocabCore/
   Support/       DateProvider.swift, AppPaths.swift, JSONCoding.swift, FileErrorText.swift (україномовні тексти файлових помилок)
   Storage/       FileSystem.swift, FileDictionaryStore.swift, BackupManager.swift,
                  StorageError.swift, LoadResult.swift
-  Repository/    DictionaryRepository.swift, RepositoryError.swift, EntryQuery.swift (EntryQuery + EntrySort)
+  Repository/    DictionaryRepository.swift, RepositoryError.swift, EntryQuery.swift (EntryQuery + EntrySort),
+                 Pagination.swift (Pagination + EntryPage, M6)
   Claude/        HTTPTransport.swift, ClaudeConfiguration.swift,
                  ClaudeRequestBuilder.swift, ClaudeAPIClient.swift, ClaudeError.swift,
                  PromptBuilder.swift, LookupResponseParser.swift, ClaudeLookupService.swift
-  Processing/    ErrorDisposition.swift, RetryPolicy.swift, EntryProcessor.swift, PendingQueueProcessor.swift
+  Processing/    ErrorDisposition.swift, RetryPolicy.swift, EntryProcessor.swift, PendingQueueProcessor.swift,
+                 ProcessingTrigger.swift (+ QueueLog, M6)
   UseCases/      AddWordUseCase.swift (+ AddWordOutcome), ServiceRequestHandler.swift (+ ServiceResponse),
                  NotificationText.swift (+ NotificationContent)
   Transfer/      DictionaryExporter.swift, DictionaryImporter.swift, ImportMerger.swift,
                  ImportReport.swift, ImportError.swift, DictionaryTransferService.swift
   Security/      SecretStore.swift (+ SecretKey, SecretStoreError), InMemorySecretStore.swift, RedactingLogger.swift
-  Settings/      SettingsStore.swift
+  Settings/      SettingsStore.swift, AppAppearance.swift (M6)
 Tests/VocabCoreTests/              # усі тести ядра (Linux + macOS), Fixtures/*.json як рядкові константи у коді
 App/
   Info.plist
@@ -53,13 +55,14 @@ App/
     AppDelegate.swift              # композиційний корінь, Services, старт черги
     AppModel.swift                 # @MainActor ObservableObject, міст між repository та UI
     AppEnvironment.swift           # isRunningTests, шляхи
-    Views/   MenuBarContentView.swift, DictionaryWindowView.swift, EntryRowView.swift,
+    Views/   MenuBarContentView.swift, DictionaryWindowView.swift, EntryTableView.swift (M6, замінює EntryRowView), PaginationBar.swift (M6),
              EntryEditorView.swift, AddEntryView.swift, SettingsView.swift, ImportModeDialog.swift
     Platform/ ServicesProvider.swift, KeychainSecretStore.swift, UserNotifier.swift (протокол),
              NotificationService.swift (UserNotifier через UNUserNotificationCenter),
-             LoginItemService.swift (LoginItemManaging), SpeechService.swift (SpeechSpeaking), FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift
+             LoginItemService.swift (LoginItemManaging), SpeechService.swift (SpeechSpeaking), FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift,
+             AppearanceController.swift (AppearanceApplying, M6)
   Tests/                           # VocabAppTests (лише macOS)
-docs/manual-tests/M1.md … M5.md
+docs/manual-tests/M1.md … M6.md
 README.md                          # M5
 ```
 
@@ -340,6 +343,24 @@ public enum RepositoryError: Error, Equatable { case duplicate(Entry), notFound(
   `func matches(_ entry: Entry) -> Bool`. Пошуковий текст попередньо trim-иться; порожній → усі записи.
   Пошук: `range(of:options:[.caseInsensitive, .diacriticInsensitive])` по `word`, `lemma`, кожному `translations`.
   Алфавіт: за `TextNormalizer.key(word)`, тай-брейк за `createdAt`.
+- `Pagination` / `EntryPage` (M6, `Repository/Pagination.swift`, чиста логіка, сторінки нумеруються з 1):
+  ```swift
+  public struct Pagination: Equatable, Sendable {
+    public static let pageSizeOptions = [20, 25, 30]
+    public static let defaultPageSize = 25
+    public let pageSize: Int                                   // не з pageSizeOptions → defaultPageSize
+    public init(pageSize: Int = Pagination.defaultPageSize)
+    public func pageCount(totalCount: Int) -> Int              // max(1, ceil(total / pageSize)); 0 записів → 1
+    public func clamp(_ page: Int, totalCount: Int) -> Int     // у межах 1...pageCount (≤ 0 → 1)
+    public func page(_ number: Int, of entries: [Entry]) -> EntryPage   // number спершу clamp-иться
+  }
+  public struct EntryPage: Equatable, Sendable {
+    public let entries: [Entry]; public let number: Int; public let pageCount: Int; public let totalCount: Int
+    public var hasPrevious: Bool { number > 1 }; public var hasNext: Bool { number < pageCount }
+    public var label: String                                   // «Сторінка 2 з 5»
+  }
+  ```
+  Порядок: `query.apply(to:)` → `pagination.page(_:of:)`. Пошук і сортування — по всьому словнику, не по сторінці.
 
 ---
 
@@ -455,7 +476,11 @@ public final class RedactingLogger: Sendable {
 кешу `AppModel` (не Keychain на кожен лог). `CapturingLogSink` (у тестах) і `PrintLogSink` (ядро) — реалізації.
 
 `SettingsStore` (протокол + `UserDefaultsSettingsStore(defaults: UserDefaults)`): `model: String`
-(ключ `claudeModel`, default `"claude-haiku-5-5"`; порожній рядок → default), `languagePairID` (default `en-uk`).
+(ключ `claudeModel`, default `"claude-haiku-5-5"`; порожній рядок → default), `languagePairID` (default `en-uk`);
+M6: `appearance: AppAppearance` (ключ `appearance`, rawValue; відсутнє/невідоме → `.system`) і `pageSize: Int`
+(ключ `entriesPageSize`; значення поза `Pagination.pageSizeOptions` → `Pagination.defaultPageSize` = 25).
+`public enum AppAppearance: String, CaseIterable, Sendable { case system, light, dark }` (`Settings/AppAppearance.swift`,
+`var title`: «Як у системі» / «Світла» / «Темна»). Обидві реалізації (`UserDefaults…`, `InMemory…`) підтримують нові поля.
 Автозапуск не зберігається — істина в `SMAppService.mainApp.status`.
 
 ---
@@ -513,6 +538,12 @@ public actor PendingQueueProcessor {
 - Невідома пара (`registry.pair(id:) == nil`) → `failed` з повідомленням «Невідома мовна пара».
 - Тригери в застосунку: старт, `NetworkMonitor` → `.satisfied`, збереження ключа/моделі,
   `Timer` кожні 60 с (`processDue`) лише поки існують pending-записи, кнопки «Повторити» / «Повторити всі».
+- M6, `Processing/ProcessingTrigger.swift`: `public enum ProcessingTrigger: String, CaseIterable, Sendable { case manual,
+  retryAll, startup, network, keySaved, modelChanged, imported, due }` і
+  `public enum QueueLog { static func started(_ trigger:, entryID: UUID?) -> String; static func finished(_ trigger:, results: [ProcessingResult]) -> String }`.
+  Формат: `Queue run started: trigger=network` / `Queue run finished: trigger=manual id=<UUID> ready=1 pending=0 failed=0 skipped=0 notFound=0`.
+  Лише тригер, UUID і лічильники — без слова, тексту помилки, ключа. Сигнатури `PendingQueueProcessor` не змінюються:
+  логує `AppModel` (через `claude.logger`) навколо кожного виклику черги.
 
 ---
 
@@ -642,6 +673,38 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   (`nil` → відповідна функція недоступна); `@Published entries`, `query`, `loadError`, `lastReport`, `lastServiceMessage: String?` (текст останнього результату Services — показується в меню, якщо сповіщення заборонені), `hasAPIKey`; підписка
   на `repository.changes()` у `Task`; методи `addManual`, `addViaClaude`, `update`, `delete`, `retry`,
   `retryAll`, `export(to:)`, `import(from:mode:)`, `saveAPIKey`, `setModel`.
+  **M6:** новий параметр init `settings: SettingsStore? = nil` (nil → `InMemorySettingsStore()`; `AppDelegate` передає той самий
+  `UserDefaultsSettingsStore`, що й у `ClaudeServices`) і `appearanceApplier: AppearanceApplying? = nil`.
+  `@Published pageNumber: Int = 1`, `@Published private(set) pageSize: Int`, `@Published private(set) appearance: AppAppearance`;
+  `var currentPage: EntryPage` = `Pagination(pageSize:).page(pageNumber, of: query.apply(to: entries))`;
+  `nextPage()`, `previousPage()`, `setPageSize(_:)` (зберігає, `pageNumber = 1`), `setAppearance(_:)` (зберігає + `applier.apply`).
+  `query` має `didSet`: якщо змінився `searchText` або `sort` → `pageNumber = 1`. Після кожного `apply(entries)` (зміни
+  репозиторію, видалення, імпорт) → `pageNumber = pagination.clamp(pageNumber, totalCount: відфільтрованих)`.
+  Тригери черги: `retry(id:)` → `.manual`, `retryAll()` → `.retryAll`, `processDue()` → `.due`,
+  `processPending(trigger:)` (старт → `.startup`, `NetworkMonitor` → `.network`, ключ → `.keySaved`, модель → `.modelChanged`,
+  імпорт → `.imported`); кожен виклик логується `QueueLog.started/finished` рівнем `info`.
+- **Головне вікно (M6)** — `DictionaryWindowView`: `.searchable` і `Picker` сортування (як у M5) у toolbar; під ними
+  `EntryTableView` — SwiftUI `Table(model.currentPage.entries, selection: $selection)` (`Set<Entry.ID>`), колонки
+  `TableColumn("Слово")` (`word`, жирним), «Транскрипція» (`transcription ?? ""`), «Переклад» (`translations.joined(", ")`),
+  «Приклад» (`example.source`, `.help("source — translation")`), вузька колонка без заголовка `.width(70–90)`:
+  бейдж «очікує»/«помилка» (`.help(lastError)`), кнопка «Повторити» (лише pending/failed, `ProgressView` під час retry),
+  кнопка озвучення (лише ready, якщо `speech != nil`). Текст у клітинках — `lineLimit(1)` + `.help(повний текст)`.
+  Дії над рядком — `.contextMenu(forSelectionType: Entry.ID.self, menu:, primaryAction:)` (macOS 13+): «Редагувати»
+  (і подвійний клік = primaryAction → `EntryEditorView` sheet), «Повторити», «Озвучити», «Видалити» (з підтвердженням, як у M5).
+  **Сортування — лише Picker** (`EntrySort` у `EntryQuery`); `Table` без `sortOrder:` (заголовки не клікабельні). Причина:
+  `dateNewest/dateOldest` сортують за `createdAt`, якого немає серед колонок; `KeyPathComparator` дав би друге джерело
+  істини для порядку й не зберігав би ключ `TextNormalizer.key` для алфавіту.
+  Знизу `PaginationBar`: «‹ Попередня  Сторінка N з M  Наступна ›» (`currentPage.label`; кнопки `disabled` за
+  `hasPrevious/hasNext`); прихована, якщо `pageCount == 1`. Зміна сторінки скидає `selection`. Порожній стан — як у M5.
+- **Налаштування (M6)** — `SettingsView`: секція «Вигляд»: `Picker("Тема", …)` з `AppAppearance.allCases`
+  (`.pickerStyle(.radioGroup)`) і `Picker("Записів на сторінці", …)` з `Pagination.pageSizeOptions`.
+- **Тема (M6)** — `protocol AppearanceApplying: AnyObject { func apply(_ appearance: AppAppearance) }`
+  (`Platform/AppearanceController.swift`), реалізація `AppearanceController` (`@MainActor`): `NSApp.appearance =`
+  `nil` (`.system`) / `NSAppearance(named: .aqua)` / `NSAppearance(named: .darkAqua)`. Обрано `NSApp.appearance`, а не
+  `preferredColorScheme`: воно наслідується всіма вікнами застосунку (обидві `Window`-сцени, sheet-и, алерти,
+  `NSOpenPanel/NSSavePanel`), тоді як `preferredColorScheme` діє на одну сцену й має відомі проблеми з поверненням до
+  системної теми (`nil`). `AppDelegate` застосовує збережену тему в `applicationDidFinishLaunching` (і під тестами — ні).
+  Чи підхоплює меню `MenuBarExtra` (стиль `.menu`, це `NSMenu` від status item) тему застосунку — U14.
 - `ServicesProvider: NSObject` (`@MainActor`):
   ```swift
   @objc(addToDictionary:userData:error:)
@@ -668,7 +731,8 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   `NSOpenPanel` (`allowedContentTypes = [.json]`, один файл).
 - `NetworkMonitor` — `NWPathMonitor` на власній черзі; при переході в `.satisfied` → `Task { await processor.processAll(ignoringBackoff: true) }`.
 - `OSLogSink: LogSink` — `os.Logger(subsystem: "com.vocabapp.VocabApp", category:)`, повідомлення з `privacy: .public`
-  (вони вже відредаговані `RedactingLogger`). Ім'я `RedactingLogger` обрано, щоб не конфліктувати з `os.Logger` в app-таргеті.
+  (вони вже відредаговані `RedactingLogger`). Категорії (M6): `claude` (HTTP, черга, ключ) і `notifications`
+  (`NotificationService` отримує окремий `RedactingLogger(sink: OSLogSink(category: "notifications"), secretsProvider: keyCache.secrets)`). Ім'я `RedactingLogger` обрано, щоб не конфліктувати з `os.Logger` в app-таргеті.
 
 ### 11.1 Конкурентність (Swift 5 mode, macOS 13)
 
@@ -702,6 +766,9 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 | D15 | Sandbox | Вимкнено (ad-hoc, поза App Store). |
 | D16 | Поле `lastError` | Додаткове опційне поле запису (не ламає схему; ігнорується іншими читачами). |
 | D17 | Services-виклик під час обробки черги | Якщо запис уже обробляється паралельним `processAll` (`.skipped`), сповіщення — «Обробляється: word» (або «Додано», якщо запис уже `ready`). Остаточний результат окремим сповіщенням не надсилається — він видний лише у вікні словника / меню (`lastServiceMessage`, статус запису). |
+| D18 | Розмір сторінки (M6) | 25 за замовчуванням; Settings: 20 / 25 / 30. Скидання на 1 при зміні пошуку, сортування, розміру сторінки; clamp після видалення/імпорту. |
+| D19 | Сортування таблиці (M6) | Лише `Picker` (`EntrySort`); заголовки колонок не сортують (див. §11). |
+| D20 | Тема (M6) | `NSApp.appearance` на рівні застосунку; ключ `appearance`, default «Як у системі». |
 
 ---
 
@@ -738,6 +805,10 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   або `"settings"` (лише при першому запуску, не при відкритті через Services). Формат `NSWindow.identifier`
   для SwiftUI-сцен на macOS 13 не задокументований — **перевірити на Mac**. Запасний варіант: закривати всі
   `NSApp.windows`, крім вікна `MenuBarExtra` (і панелей), або фільтрувати за `title` («Словник», «Налаштування»).
+- **U14** (M6) `NSApp.appearance` для LSUIElement-застосунку: чи миттєво перемальовуються вже відкриті вікна й `Table`;
+  чи меню `MenuBarExtra(.menu)` слідує темі застосунку чи темі menu bar/системи (очікування: системі — прийнятно,
+  зафіксувати в M6.md); чи повернення до `nil` відновлює системну тему без перезапуску. План Б: додатково
+  `.preferredColorScheme` на корені кожної `Window`-сцени.
 
 ---
 
