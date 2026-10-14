@@ -470,7 +470,7 @@ final class AppModel: ObservableObject {
         query.languageID = validated
         pageNumber = 1
         guard validated != nil, variantBackfill != nil else { return nil }
-        let task = Task { @MainActor [weak self] in
+        let task = Task<Void, Never> { @MainActor [weak self] in
             await self?.runBackfill(trigger: .displaySwitch)
         }
         backfillTask = task
