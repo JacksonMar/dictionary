@@ -56,12 +56,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         // Під тестами — заглушка без звернень до `UNUserNotificationCenter`.
+        // Сповіщення логуються в окрему category `notifications` (M6, P4) з тим самим редагуванням ключа.
+        let keyCache = claude.keyCache
         let notifier: UserNotifier = isRunningTests
             ? SilentUserNotifier()
-            : NotificationService(logger: claude.logger)
+            : NotificationService(
+                logger: RedactingLogger(
+                    sink: OSLogSink(category: "notifications"),
+                    secretsProvider: { keyCache.secrets() }
+                )
+            )
         // Під тестами — без реєстрації login item і без аудіо.
         let loginItems: LoginItemManaging? = isRunningTests ? nil : LoginItemService()
         let speech: SpeechSpeaking? = isRunningTests ? nil : SpeechService()
+        // Під тестами тема не застосовується до `NSApp` (§11, M6).
+        let appearanceApplier: AppearanceApplying? = isRunningTests ? nil : AppearanceController()
         let model = AppModel(
             repository: repository,
             languagePairID: LanguagePairRegistry.defaultPairID,
@@ -69,7 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             transfer: transfer,
             filePanels: SystemFilePanels(),
             loginItems: loginItems,
-            speech: speech
+            speech: speech,
+            // `settings` не передаємо: `AppModel` бере `claude.settings` — одне джерело істини (M6).
+            appearanceApplier: appearanceApplier
         )
 
         self.paths = paths
@@ -90,6 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Під тестами словник не завантажується автоматично: тести самі створюють AppModel у тимчасовому каталозі.
         guard !AppEnvironment.isRunningTests else { return }
         let model = self.model
+
+        // Збережена тема (M6) — до появи будь-яких вікон.
+        model.applyCurrentAppearance()
 
         // U12: при запуску жодне вікно не відкривається — лише іконка в menu bar.
         closeScenesOpenedAtLaunch()
@@ -117,7 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let monitor = NetworkMonitor {
             Task { @MainActor in
-                await model.processPending()
+                await model.processPending(trigger: .network)
             }
         }
         monitor.start()
@@ -125,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task { @MainActor in
             await loadTask.value
-            await model.processPending()
+            await model.processPending(trigger: .startup)
         }
     }
 

@@ -136,8 +136,21 @@ final class AppModel: ObservableObject {
     @Published var importStage: ImportStage?
     /// Іде експорт або імпорт.
     @Published private(set) var isTransferring = false
-    /// Пошук і сортування в головному вікні (M5, §6 `EntryQuery`).
-    @Published var query = EntryQuery()
+    /// Пошук і сортування в головному вікні (M5, §6 `EntryQuery`). Зміна пошуку чи сортування → сторінка 1 (D18).
+    @Published var query = EntryQuery() {
+        didSet {
+            if query.searchText != oldValue.searchText || query.sort != oldValue.sort {
+                pageNumber = 1
+            }
+        }
+    }
+    /// Номер поточної сторінки в головному вікні (з 1, M6). Обмежується `Pagination.clamp` у `currentPage`
+    /// і після кожної зміни записів.
+    @Published var pageNumber: Int = 1
+    /// Записів на сторінці (M6, одне з `Pagination.pageSizeOptions`).
+    @Published private(set) var pageSize: Int
+    /// Тема застосунку (M6).
+    @Published private(set) var appearance: AppAppearance
     /// Стан автозапуску (M5); `nil` — автозапуск недоступний (немає `LoginItemManaging`, напр. під тестами).
     @Published private(set) var loginItemState: LoginItemState?
     /// Помилка увімкнення/вимкнення автозапуску.
@@ -156,6 +169,9 @@ final class AppModel: ObservableObject {
     private let loginItems: LoginItemManaging?
     private let speech: SpeechSpeaking?
     private let registry: LanguagePairRegistry
+    /// Налаштування (M6: тема, розмір сторінки) — той самий екземпляр, що й у `ClaudeServices`, якщо він є.
+    private let settings: SettingsStore
+    private let appearanceApplier: AppearanceApplying?
     /// Обробка імпортованих pending-записів, запущена після імпорту (для тестів — щоб дочекатися).
     private(set) var postImportProcessing: Task<Void, Never>?
     private var changesTask: Task<Void, Never>?
@@ -164,6 +180,8 @@ final class AppModel: ObservableObject {
     /// `claude == nil` — без Claude (M1-режим): «Заповнити через Claude» і черга недоступні.
     /// `transfer == nil` — експорт/імпорт недоступні. `filePanels == nil` — системні `NSSavePanel`/`NSOpenPanel`.
     /// `loginItems == nil` — автозапуск недоступний; `speech == nil` — озвучення недоступне (M5).
+    /// `settings == nil` → `claude?.settings`, інакше `InMemorySettingsStore()` (одне джерело істини, M6).
+    /// `appearanceApplier == nil` — тема лише зберігається, але не застосовується (напр. під тестами).
     init(
         repository: DictionaryRepository,
         languagePairID: String = LanguagePairRegistry.defaultPairID,
@@ -172,7 +190,9 @@ final class AppModel: ObservableObject {
         filePanels: FilePanelPresenting? = nil,
         loginItems: LoginItemManaging? = nil,
         speech: SpeechSpeaking? = nil,
-        registry: LanguagePairRegistry = .shared
+        registry: LanguagePairRegistry = .shared,
+        settings: SettingsStore? = nil,
+        appearanceApplier: AppearanceApplying? = nil
     ) {
         self.repository = repository
         self.languagePairID = languagePairID
@@ -182,6 +202,11 @@ final class AppModel: ObservableObject {
         self.loginItems = loginItems
         self.speech = speech
         self.registry = registry
+        let resolvedSettings = settings ?? claude?.settings ?? InMemorySettingsStore()
+        self.settings = resolvedSettings
+        self.appearanceApplier = appearanceApplier
+        self.pageSize = Pagination.normalizedPageSize(resolvedSettings.pageSize)
+        self.appearance = resolvedSettings.appearance
         if let claude {
             modelName = claude.settings.model
         }
@@ -291,7 +316,9 @@ final class AppModel: ObservableObject {
         guard let claude, !retryingIDs.contains(id) else { return nil }
         retryingIDs.insert(id)
         defer { retryingIDs.remove(id) }
+        logQueueStarted(.manual, entryID: id)
         let result = await claude.queue.retry(entryID: id)
+        logQueueFinished(.manual, entryID: id, results: [result])
         apply(await repository.allEntries())
         return result
     }
@@ -302,13 +329,15 @@ final class AppModel: ObservableObject {
         guard let claude, !isRetryingAll else { return }
         isRetryingAll = true
         defer { isRetryingAll = false }
-        await claude.queue.processAll(ignoringBackoff: true)
+        logQueueStarted(.retryAll)
+        var results = await claude.queue.processAll(ignoringBackoff: true)
         let failedIDs = await repository.allEntries().filter { $0.status == .failed }.map(\.id)
         for id in failedIDs where !retryingIDs.contains(id) {
             retryingIDs.insert(id)
-            _ = await claude.queue.retry(entryID: id)
+            results.append(await claude.queue.retry(entryID: id))
             retryingIDs.remove(id)
         }
+        logQueueFinished(.retryAll, results: results)
         apply(await repository.allEntries())
     }
 
@@ -332,6 +361,60 @@ final class AppModel: ObservableObject {
     /// Активний непорожній пошуковий запит.
     var isSearching: Bool {
         !query.normalizedSearchText.isEmpty
+    }
+
+    // MARK: - Пагінація (M6)
+
+    var pagination: Pagination {
+        Pagination(pageSize: pageSize)
+    }
+
+    /// Поточна сторінка: пошук і сортування по всьому словнику (`visibleEntries`), потім зріз сторінки.
+    var currentPage: EntryPage {
+        pagination.page(pageNumber, of: visibleEntries)
+    }
+
+    func nextPage() {
+        pageNumber = pagination.clamp(pageNumber + 1, totalCount: visibleCount)
+    }
+
+    func previousPage() {
+        pageNumber = pagination.clamp(pageNumber - 1, totalCount: visibleCount)
+    }
+
+    /// Зберігає розмір сторінки й повертає на сторінку 1. Значення поза `Pagination.pageSizeOptions` ігнорується.
+    func setPageSize(_ newSize: Int) {
+        guard Pagination.pageSizeOptions.contains(newSize) else { return }
+        settings.pageSize = newSize
+        pageSize = newSize
+        pageNumber = 1
+    }
+
+    /// Кількість записів після пошуку (без сортування).
+    private var visibleCount: Int {
+        entries.reduce(0) { $0 + (query.matches($1) ? 1 : 0) }
+    }
+
+    /// Після зміни записів (видалення, імпорт, знімок репозиторію) сторінка не виходить за останню.
+    private func clampPageNumber() {
+        let clamped = pagination.clamp(pageNumber, totalCount: visibleCount)
+        if clamped != pageNumber {
+            pageNumber = clamped
+        }
+    }
+
+    // MARK: - Тема (M6)
+
+    /// Зберігає тему й застосовує її (`AppearanceApplying`).
+    func setAppearance(_ newAppearance: AppAppearance) {
+        settings.appearance = newAppearance
+        appearance = newAppearance
+        appearanceApplier?.apply(newAppearance)
+    }
+
+    /// Застосовує збережену тему (на старті з `AppDelegate`).
+    func applyCurrentAppearance() {
+        appearanceApplier?.apply(appearance)
     }
 
     // MARK: - Озвучення (M5)
@@ -398,16 +481,30 @@ final class AppModel: ObservableObject {
         lastServiceMessage = response.notification.singleLine
     }
 
-    /// Обробка всіх pending-записів (старт, відновлення мережі, новий ключ/модель).
-    func processPending() async {
+    /// Обробка всіх pending-записів (старт `.startup`, відновлення мережі `.network`, новий ключ `.keySaved`,
+    /// модель `.modelChanged`, імпорт `.imported`). Тригер пишеться в лог (M6, P5).
+    func processPending(trigger: ProcessingTrigger) async {
         guard let claude else { return }
-        await claude.queue.processAll(ignoringBackoff: true)
+        logQueueStarted(trigger)
+        let results = await claude.queue.processAll(ignoringBackoff: true)
+        logQueueFinished(trigger, results: results)
     }
 
     /// Таймер: лише записи, для яких настав час наступної спроби.
     func processDue() async {
         guard let claude else { return }
-        await claude.queue.processDue()
+        logQueueStarted(.due)
+        let results = await claude.queue.processDue()
+        logQueueFinished(.due, results: results)
+    }
+
+    /// Лог черги: лише тригер, UUID і лічильники (`QueueLog`), без слів, помилок і ключа.
+    private func logQueueStarted(_ trigger: ProcessingTrigger, entryID: UUID? = nil) {
+        claude?.logger.info(QueueLog.started(trigger, entryID: entryID))
+    }
+
+    private func logQueueFinished(_ trigger: ProcessingTrigger, entryID: UUID? = nil, results: [ProcessingResult]) {
+        claude?.logger.info(QueueLog.finished(trigger, entryID: entryID, results: results))
     }
 
     // MARK: - Експорт / імпорт (M4)
@@ -515,7 +612,7 @@ final class AppModel: ObservableObject {
             apply(await repository.allEntries())
             if claude != nil, entries.contains(where: { $0.status == .pending }) {
                 postImportProcessing = Task { @MainActor [weak self] in
-                    await self?.processPending()
+                    await self?.processPending(trigger: .imported)
                 }
             }
             return report
@@ -572,7 +669,7 @@ final class AppModel: ObservableObject {
         claude.logger.info("API key saved")
         // Записи, що чекали на ключ, обробляються одразу.
         Task { @MainActor [weak self] in
-            await self?.processPending()
+            await self?.processPending(trigger: .keySaved)
         }
         return true
     }
@@ -600,7 +697,7 @@ final class AppModel: ObservableObject {
         claude.settings.model = name
         modelName = claude.settings.model
         Task { @MainActor [weak self] in
-            await self?.processPending()
+            await self?.processPending(trigger: .modelChanged)
         }
     }
 
@@ -696,6 +793,7 @@ final class AppModel: ObservableObject {
             }
             return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
         }
+        clampPageNumber()
         updatePendingTimer()
     }
 
