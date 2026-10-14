@@ -54,6 +54,7 @@
 - Judge: блокуючих дефектів у коді немає; усі відкладені зауваження M2–M4 виправлено; README повний. Для PASS потрібен зелений macOS CI з новими тестами.
 - Що зробити: відновити GitHub Actions (Settings → Billing / spending limit) і перезапустити CI (Actions → CI → Re-run) або локально на Mac: `xcodegen generate && xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-`.
 - ⏳ `docs/manual-tests/M5.md` — menu bar, автозапуск, озвучення на реальному Mac.
+- 2026-10-14: користувач відновив ліміт, але перезапуск через інтеграцію заборонений (403 на rerun і workflow_dispatch). Рішення користувача: чекати оновлення ліміту. CI оптимізовано для економії macOS-хвилин: `macos-core` злито в `macos-app` (один macOS-раннер), зміни лише в `*.md`/`docs/`/`.claude/` не запускають CI, `concurrency` скасовує застарілі прогони.
 
 ## Відкриті питання / невизначеності щодо macOS API
 

@@ -2,8 +2,21 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.claude/**'
   workflow_dispatch:
+
+# Скасовувати попередній прогін на тій самій гілці — економія macOS-хвилин.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux-core:
@@ -14,13 +27,6 @@ jobs:
       - name: Build & test core (Linux)
         run: swift test
 
-  macos-core:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Core package tests (macOS)
-        run: swift test
-
   macos-app:
     runs-on: macos-15
     steps:
@@ -29,6 +35,8 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+      - name: Core package tests (macOS)
+        run: swift test
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate project

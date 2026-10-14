@@ -768,7 +768,7 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 
 | КП | Перевірка |
 |---|---|
-| M1.1 `swift build`/`swift test` на Linux і macOS; `xcodegen generate && xcodebuild build/test` у CI | CI jobs `linux-core`, `macos-core`, `macos-app` |
+| M1.1 `swift build`/`swift test` на Linux і macOS; `xcodegen generate && xcodebuild build/test` у CI | CI jobs `linux-core`, `macos-app` (включає `swift test` на macOS) |
 | M1.2 Серіалізація/десеріалізація за схемою | `EntryCodingTests`: `testRoundTrip`, `testEncodedKeysMatchSchema`, `testDecodesRequirementsExample`, `testDecodesFractionalSecondDates`, `testOptionalFieldsOmittedWhenNil`, `testUnknownStatusFailsDecoding`, `testDatesEncodedAsISO8601UTC` |
 | M1.3 Атомарний запис | `FileDictionaryStoreTests`: `testLoadMissingFileReturnsEmpty`, `testSaveThenLoad`, `testSaveCreatesDirectory`, `testSaveLeavesNoTemporaryFiles`, `testFailedReplaceKeepsOriginalAndRemovesTemp`, `testSaveUpdatesExportedAt`, `testCorruptedFileMovedToBackups`, `testNewerSchemaVersionThrowsAndKeepsFile` |
 | M1.4 Нормалізація | `TextNormalizerTests`: `testTrims`, `testLowercasesKey`, `testCollapsesWhitespace`, `testStripsSurroundingPunctuation`, `testKeepsInnerApostropheAndHyphen`, `testNormalizesCurlyApostrophe` |
