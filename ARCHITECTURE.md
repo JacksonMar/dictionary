@@ -260,15 +260,15 @@ extension LanguagePair { public static let englishUkrainian: LanguagePair }  // 
   один запит до Claude визначає мову (`source_language`) і повертає обидва відображення. Визначена мова зберігається в
   `Entry.sourceLanguage` (`nil` = мова джерела пари, тобто всі старі записи = `en`). Для італійського виділення
   `Entry.word` після відповіді = англійський відповідник від моделі, а виділене слово — у `variants["it"].word`.
-- **Дедуплікація** — за ключами **всіх** відображень у межах пари (D26): `key(word)` і `key(variants[x].word)` для
-  ready-варіантів.
+- **Дедуплікація нового слова** — за ключами **всіх** відображень у межах пари (D26): `key(word)` і
+  `key(variants[x].word)` для ready-варіантів. Редагування й варіанти ніколи не блокуються італійськими ключами (§6).
 
 ```swift
 // Languages/RenderingLanguage.swift
 public struct RenderingLanguage: Hashable, Sendable {
   public let id: String                    // "it" — ключ у Entry.variants; стабільний, пишеться у файл
   public let shortTitle: String            // "IT" — підпис сегмента перемикача
-  public let languageName: String          // "Italian" — підставляється в промти
+  public let languageName: String          // "Italian"
   public let speechLanguageCode: String    // "it-IT"
   public let prompt: RenderingPromptTemplate
 }
@@ -276,8 +276,9 @@ public struct RenderingPromptTemplate: Hashable, Sendable {
   public let combinedInstruction: String   // додається до system-промту пари в комбінованому запиті (§7.7)
   public let batchSystem: String           // system-промт пакетного доповнення (§7.7)
   public let batchUser: String             // шаблон user-повідомлення з плейсхолдером {{ITEMS}}
-  // Плейсхолдери в усіх трьох: {{SOURCE_LANGUAGE}}, {{TARGET_LANGUAGE}} (з LanguagePair), {{LANGUAGE}} (languageName),
-  // {{ID}} (id). Тож одна RenderingLanguage працює з будь-якою парою.
+  // Тексти — константи для en-uk (англійська/українська записані прямо в тексті, без плейсхолдерів мов; єдиний
+  // плейсхолдер — {{ITEMS}} у batchUser). Використання Italian з іншою парою = окреме значення RenderingLanguage у
+  // новому файлі (код ядра не змінюється). Узагальнення шаблонів — відкладено (не M7).
 }
 extension RenderingLanguage { public static let italian: RenderingLanguage }   // Languages/Italian.swift
 
@@ -301,7 +302,7 @@ public struct EntryVariant: Codable, Equatable, Sendable {
   public var status: EntryStatus           // ready | pending | failed (той самий enum)
   public var lastError: String?
   public var sourceKey: String             // TextNormalizer.key(entry.word) на момент генерації (D23)
-  public var updatedAt: Date               // власний час варіанта; Entry.updatedAt НЕ змінює (D24)
+  // Власного updatedAt у M7 немає (merge варіантів його не потребує, D30). Зміни варіантів НЕ змінюють Entry.updatedAt (D24).
 }
 public enum VariantState: Equatable, Sendable { case missing, stale, pending, failed, ready }
 extension Entry {
@@ -309,14 +310,14 @@ extension Entry {
   public var sourceLanguage: String?                     // нове опційне поле: "it" для італійського виділення; nil = мова пари
   public func variantState(_ languageID: String) -> VariantState    // stale = sourceKey != key(word); варіант мови
                                                                     //   sourceLanguage ніколи не stale (це слово користувача)
-  public func dedupKeys() -> Set<String>   // key(word) ∪ key(v.word) для readyVariant; для pending — лише key(word)
+  public func dedupKeys() -> Set<String>   // key(word) ∪ key(v.word) для кожного readyVariant (використовується лише в add/D27)
   public func readyVariant(_ languageID: String) -> EntryVariant?   // лише ready і не stale
 }
 ```
 
 - **JSON**: `"variants": {"it": {"word": "correre", "lemma": "correre", "partOfSpeech": "verb",
   "transcription": "/korˈrere/", "translations": ["бігти"], "example": {"source": "Lei corre ogni mattina.",
-  "translation": "Вона бігає щоранку."}, "status": "ready", "sourceKey": "run", "updatedAt": "2026-10-14T10:00:00Z"}}`.
+  "translation": "Вона бігає щоранку."}, "status": "ready", "sourceKey": "run"}}`.
   Ключі camelCase, `encodeIfPresent`, той самий `JSONCoding`. Порожній словник нормалізується в `nil` (не пишеться),
   тож файл без італійських даних **байт-у-байт** такий самий, як у M6.
 - **schemaVersion лишається 1** (D21): поле адитивне й опційне; M1–M6 використовують синтезований `Codable`, який
@@ -325,9 +326,9 @@ extension Entry {
   виділення англійські поля лишаються валідними). Нові версії читають старі файли без міграції. `sourceLanguage`
   пишеться лише якщо відрізняється від мови джерела пари (тобто зараз лише `"it"`).
 - **Стійке декодування** (D22): `Entry` отримує власний `init(from:)`, у якому `variants` декодується поелементно —
-  некоректний варіант (не той тип, невідомий `status`, відсутній `sourceKey`/`updatedAt`) **відкидається**, а не ламає
+  некоректний варіант (не той тип, невідомий `status`, відсутній `sourceKey`) **відкидається**, а не ламає
   запис. Інакше один зіпсований варіант перетворив би весь `dictionary.json` на «corrupted» (§5). Решта полів
-  декодується як раніше (суворо). `encode(to:)` — синтезований еквівалент (ручна реалізація, якщо компілятор вимагатиме).
+  декодується як раніше (суворо); відсутній `sourceKey` → варіант відкидається. `encode(to:)` — синтезований еквівалент (ручна реалізація, якщо компілятор вимагатиме).
 - **Інваріант**: `variants` змінюються лише через `DictionaryRepository.setVariants`, `update(_:replacingVariants: true)`
   (лише `EntryProcessor`) та імпорт (`mergeImported`/`replaceAll`, §10); звичайний `update(_:)` їх зберігає (§6).
 - **Зв'язок з `it-uk`**: `LanguagePair` описує **мову джерела** (з якої мови додаються слова через Services, ключ
@@ -460,12 +461,16 @@ public enum RepositoryError: Error, Equatable { case duplicate(Entry), notFound(
   }
   ```
   Порядок: `query.apply(to:)` → `pagination.page(_:of:)`. Пошук і сортування — по всьому словнику, не по сторінці.
-- **M7 — дедуплікація за всіма відображеннями** (D26): `findDuplicate(of:languagePair:excluding:)` повертає запис тієї
-  ж пари, у якого `dedupKeys()` містить `key(word)`. Те саме правило — в `add`, `update`, `setVariants`
-  (варіант, чий `key(word)` збігається з ключем **іншого** запису, все одно зберігається — показ не блокуємо, — але
-  `findDuplicate` поверне перший за `createdAt`). Додатково:
-  `public func findDuplicate(keys: Set<String>, languagePair: String, excluding: UUID?) -> Entry?` — для перевірки
-  після відповіді Claude (§8.3). Merge імпорту (D1) — і далі лише за англійським ключем.
+- **M7 — дедуплікація** (D26), три різні правила:
+  - `add(_ draft:)` і `findDuplicate(of:languagePair:excluding:)` (виклик з `AddWordUseCase` / ручного додавання):
+    `key(draft.word)` порівнюється з `dedupKeys()` інших записів тієї ж пари (англійський ключ + ключі ready-варіантів).
+  - `update(_:)`: перевіряє **лише** англійський `key(word)` проти англійських `key(word)` інших записів і **лише якщо
+    ключ змінився** відносно збереженого запису. Італійські варіанти інших записів редагування не блокують.
+  - `setVariants` і `update(_:replacingVariants: true)`: варіанти дублів **ніколи** не перевіряються й не блокують
+    збереження (два англійські слова можуть мати однаковий італійський відповідник).
+  - `public func findDuplicate(keys: Set<String>, languagePair: String, excluding: UUID?) -> Entry?` — перетин `keys` з
+    `dedupKeys()` інших записів; лише для перевірки після відповіді Claude (D27, §8.3).
+  Merge імпорту (D1) — і далі лише за англійським ключем.
 - **M7 — варіанти в репозиторії:**
   ```swift
   public struct VariantUpdate: Equatable, Sendable { public var entryID: UUID; public var languageID: String; public var variant: EntryVariant }
@@ -667,6 +672,7 @@ public struct VariantRequestItem: Equatable, Sendable {
   public var kind: SelectionKind       // SelectionValidator.kind(of: word)
   public var partOfSpeech: String?
   public var meaning: [String]         // до 3 перших translations — щоб модель взяла те саме значення
+  public var keepWord: String?         // лише refresh для італійського виділення: слово, яке треба зберегти (§8.4)
 }
 public enum VariantItemOutcome: Equatable, Sendable { case ready(LookupResult), invalid(String), missing }
 public protocol VariantBatchLookupService: Sendable {
@@ -685,8 +691,11 @@ extension ClaudeLookupService: VariantBatchLookupService   // той самий 
   `id` — ціле (або рядок-число) з запитаного набору, інакше ігнорується; дубль id — перший виграє; поля валідуються
   як у §7.4 з `kind` елемента → `.ready` або `.invalid(reason)`; запитаний id без елемента → `.missing`.
   Пакет з частково невалідними елементами — **успішна** відповідь (часткова).
-- Конверт/`stop_reason` — як §7.4 (`refusal` → `.refused`; `max_tokens` з непарсним текстом → `.invalidResponse`).
-  Повтор при `.invalidResponse` рівня відповіді — один, як §7.5; при частково невалідних елементах повтору нема.
+- Конверт/`stop_reason` — як §7.4 (`refusal` → `.refused`; `max_tokens` з непарсним текстом →
+  `.invalidResponse(LookupResponseParser.maxTokensReason)`, де `maxTokensReason = "max_tokens"` — публічна константа).
+  **Для пакета сервіс не повторює той самий промт** (на відміну від §7.5): обрізаний пакет повторно обрізався б, а
+  інша невалідна відповідь обробляється спробами черги доповнення. Тобто `lookupVariants` = рівно 1 HTTP-запит;
+  поділ обрізаного пакета робить `VariantBackfillProcessor` (§8.4). При частково невалідних елементах повтору нема.
 - `max_tokens` для пакета — `ClaudeConfiguration.batchMaxTokens = 8192` (15 × ~180 токенів ≈ 2700 + запас під adaptive
   thinking). Тіло — ті самі 4 ключі (§7.2). `ClaudeRequestBuilder` бере `configuration.maxTokens`; сервіс підставляє
   8192 лише для пакета. Чи приймає обрана модель 8192 — U15.
@@ -759,7 +768,7 @@ public actor PendingQueueProcessor {
      D5-перевірки); `variants["it"].word` = `result.variants["it"].word`, якщо його ключ = ключ виділення, інакше
      очищене виділення (D5 для мови виділення); `entry.sourceLanguage = "it"`.
   3. Для кожного `pair.renderings`: є валідний `result.variants[id]` → `EntryVariant(status: .ready, sourceKey:
-     key(entry.word), updatedAt: now)`; нема → `EntryVariant(status: .pending, …порожні поля…, lastError: nil)`.
+     key(entry.word))`; нема → `EntryVariant(status: .pending, …порожні поля…, lastError: nil)`.
   4. **Перевірка дубля після відповіді** (D27): `keys = {key(entry.word)} ∪ {key(v.word) для ready-варіантів}`;
      `repository.findDuplicate(keys:languagePair:excluding: entry.id)`. Знайдено `X` → поточний pending-запис
      **видаляється**; якщо `key(X.word) == key(entry.word)` (те саме поняття), то варіанти, яких у `X` немає в стані
@@ -767,6 +776,9 @@ public actor PendingQueueProcessor {
      `ProcessingResult.duplicate(existing: X, removedID: entry.id)` (новий case). Інакше →
      `repository.update(entry, replacingVariants: true)` → `.ready`.
   `AddWordUseCase`: `.duplicate(existing, _)` → `AddWordOutcome.duplicate(existing)` («Вже є в словнику»).
+  `PendingQueueProcessor` на `.duplicate` прибирає `removedID` з `inFlight` і зі стану спроб/`nextAttemptAt` (запису
+  більше нема) і не планує повтор. `AppModel` (усі `switch` по `ProcessingResult`, зокрема `retry(id:)` і підрахунок
+  для меню) обробляє `.duplicate` як «Вже є в словнику» для `existing`.
   `QueueLog.finished` додає лічильник `duplicate=N` (формат з M6 інакше не змінюється). Помилки lookup — §8.1 без змін
   (варіанти не чіпаються).
 
@@ -782,9 +794,9 @@ public actor VariantBackfillProcessor {
   public static let defaultBatchSize = 15
   public init(repository: DictionaryRepository, lookup: VariantBatchLookupService, registry: LanguagePairRegistry,
               policy: RetryPolicy, dateProvider: DateProvider, batchSize: Int = VariantBackfillProcessor.defaultBatchSize)
-  public func eligibleEntryIDs(languageID: String, includeFailed: Bool) async -> [UUID]
-  public func backfill(languageID: String, ignoringBackoff: Bool) async -> VariantBackfillReport  // авто
-  public func backfillAll(languageID: String) async -> VariantBackfillReport   // кнопка «Доповнити італійською»: + failed, без backoff
+  public func eligibleEntryIDs(pairID: String, languageID: String, includeFailed: Bool) async -> [UUID]
+  public func backfill(pairID: String, languageID: String, ignoringBackoff: Bool) async -> VariantBackfillReport  // авто
+  public func backfillAll(pairID: String, languageID: String) async -> VariantBackfillReport   // «Доповнити італійською»: + failed, без backoff
   public func refresh(entryID: UUID, languageID: String) async -> VariantBackfillReport  // «Оновити італійський переклад»: 1 запит, перезаписує навіть ready
 }
 ```
@@ -792,7 +804,8 @@ public actor VariantBackfillProcessor {
   pending}` і (якщо `!ignoringBackoff`) `nextAttemptAt <= now`. `ready` (не stale) — **ніколи** (D28: 0 запитів).
   `failed` — лише `backfillAll`/`refresh`. Записи з `status != .ready` не доповнюються: їх заповнить комбінований
   запит черги.
-- Групування за `languagePair` (промт залежить від пари), порядок — `createdAt` за зростанням, пакети по
+- Фільтр за парою: беруться лише записи з `languagePair == pairID` (аргумент; `AppModel` передає свій
+  `languagePairID`; пара мусить мати rendering `languageID`). Порядок — `createdAt` за зростанням, пакети по
   `batchSize` → `ceil(n / 15)` запитів, **послідовно**. Після кожного пакета — **одразу** `repository.setVariants` (один
   атомарний save на пакет; часткові успіхи зберігаються навіть якщо наступний пакет впаде).
 - Результати елементів: `.ready` → варіант `ready`, `sourceKey = key(entry.word)` на момент формування пакета (якщо
@@ -803,8 +816,14 @@ public actor VariantBackfillProcessor {
   |---|---|---|
   | `.offline`, `.missingAPIKey`, `.unauthorized`, `.forbidden` | без змін, спроба не рахується | **зупинити** (решта пакетів не надсилається) |
   | `.timeout`, `.rateLimited`, `.server`, `.transport` | `pending`, +1 спроба, backoff за `RetryPolicy` | зупинити |
-  | `.invalidResponse` (після 1 повтору), `.refused`, `.badRequest` | `failed` з `lastError` | продовжити з наступним пакетом |
+  | `.invalidResponse("max_tokens")` (обрізано) | спроба не рахується; пакет **ділиться навпіл** (`ceil`/`floor`, мінімум 1 елемент) і половини йдуть одразу, тим самим проходом; обрізаний пакет з 1 елемента → `pending`, +1 спроба | продовжити |
+  | інший `.invalidResponse`, `.refused`, `.badRequest` | `pending`, +1 спроба, backoff; після 5-ї → `failed` | продовжити з наступним пакетом |
   | `.storage` (save не вдався) | у файлі без змін | зупинити, лог `error` |
+- **`refresh` для запису з `sourceLanguage == languageID`** (слово виділено італійською): елемент запиту несе
+  `VariantRequestItem.keepWord = variants[id].word` (у JSON елемента — `"keep":"casa"`, промт: «use exactly this
+  Italian word»); після відповіді `variant.word` **примусово** = збережене слово користувача (решта полів — з
+  відповіді), `sourceLanguage` не змінюється. Автодоповнення такі записи не бере (варіант мови виділення не буває
+  missing/stale).
 - `isRunning`: паралельний виклик → `alreadyRunning = true`, 0 запитів. Черга (§8.3) і доповнення можуть іти
   одночасно: множини записів не перетинаються (черга — не-ready, доповнення — ready), а `update(_:)` не перезаписує
   варіанти (§6).
@@ -930,14 +949,15 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 `pending` записи після імпорту обробляються чергою (`processAll`).
 
 **M7 — варіанти при імпорті/merge.** `schemaVersion` лишається 1; експорт пише `variants`/`sourceLanguage` як є.
-- `DictionaryImporter.parse`: некоректні варіанти відкидаються стійким декодуванням `Entry` (§3.2) — запис **не**
+- `DictionaryImporter.parse(_ data: Data, registry: LanguagePairRegistry = .shared)` (наявні виклики `parse(_:)`
+  компілюються без змін; `registry` потрібен лише для перевірки `sourceLanguage`): некоректні варіанти відкидаються стійким декодуванням `Entry` (§3.2) — запис **не**
   пропускається й у звіт не потрапляє (варіант доповниться пакетно). `normalized` додатково для кожного варіанта:
   `word` → `TextNormalizer.clean`, переклади — як для запису; `ready` з порожнім `word` або без перекладів → варіант
   відкидається. `sourceLanguage` не з `[pair.sourceLanguageCode] + renderings` (для відомої пари) → `nil`.
 - `VariantMerge.combine(winner: Entry, other: Entry) -> [String: EntryVariant]?` (`Transfer/VariantMerge.swift`):
   кандидати — варіанти обох записів, у яких `sourceKey == key(winner.word)` (варіант мови `winner.sourceLanguage`
-  завжди лишається від winner); на кожну мову: `ready` перемагає не-ready; обидва ready → строго новіший
-  `variant.updatedAt`, рівність → winner; жоден не ready → winner-ів, якщо є, інакше other.
+  завжди лишається від winner); на кожну мову: `ready` перемагає не-ready; інакше (обидва ready або жоден) — варіант
+  переможця D1, якщо є, інакше other.
 - `ImportMerger.merge` (D1 без змін щодо основних полів і ключа збігу — англійський `key(word)` або `id`): після
   вибору переможця `variants = VariantMerge.combine(...)`. Якщо основні поля лишаються локальними (`skipped` за D1),
   але `combine` змінив варіанти локального (напр., імпортований файл з іншого Mac уже має італійські дані) — запис
@@ -1046,9 +1066,9 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   наступному запуску доповнення")`), `failed` → «помилка» (`.help(lastError)`) + кнопка «Повторити» (`refreshVariant`);
   англійський `pending/failed` запису — як у M6. Озвучення — `display.word` з `rendering.speechLanguageCode`
   (`it-IT`), лише для ready-варіанта (U17). Контекстне меню додає «Оновити італійський переклад» (явна дія, 1 запит).
-- `EntryEditorView` у режимі IT редагує поля варіанта (слово, транскрипція, переклади, приклад) і зберігає через
-  `repository.setVariants` (`status: .ready`, `sourceKey = key(entry.word)`, `updatedAt = now`; `Entry.updatedAt` не
-  змінюється). У режимі EN — як раніше. `AddEntryView` (ручне) — лише англійські поля; варіант доповниться пакетно.
+- `EntryEditorView` у режимі IT: італійські поля показуються **лише для читання** + кнопка «Оновити італійський
+  переклад» (`refreshVariant`); англійські поля редагуються як у M6. Редагування італійських полів — відкладено (не M7).
+  `AddEntryView` (ручне) — лише англійські поля; варіант доповниться пакетно.
 
 ### 11.1 Конкурентність (Swift 5 mode, macOS 13)
 
@@ -1088,13 +1108,13 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 | D21 | `schemaVersion` для M7 | Лишається **1**: `variants`/`sourceLanguage` — адитивні опційні поля; старі файли читаються без міграції; M1–M6 ігнорують нові ключі (при їх збереженні варіанти губляться — це кеш). Підвищення до 2 відхилили б і M6-читач (D12), і M6-імпортер (`!= 1`) — без вигоди. |
 | D22 | Зіпсований варіант | Стійке декодування: варіант відкидається, запис і файл — ні (інакше весь файл став би `corrupted`). |
 | D23 | Застарілий варіант | `sourceKey` = `key(entry.word)` при генерації; не збігається → `stale` (показ як «очікує», доповнюється). Варіант мови `sourceLanguage` ніколи не stale. |
-| D24 | `updatedAt` варіанта | Власний; доповнення/редагування варіанта не змінює `Entry.updatedAt` (merge англійських полів не страждає). |
+| D24 | Час варіанта | Окремого `updatedAt` у варіанта немає; доповнення/оновлення варіанта не змінює `Entry.updatedAt` (merge англійських полів не страждає). |
 | D25 | Автовизначення мови виділення | У тому ж єдиному запиті (`source_language`); неоднозначне слово обох мов → `en`. `Entry.word` завжди англійський після відповіді; італійське виділення — у `variants.it`, `sourceLanguage = "it"`. Ручного вибору мови виділення в M7 немає (кандидат на M8). |
 | D26 | Дублікати між мовами | Ключ дубля — будь-який з `dedupKeys()` (en + ready-варіанти) у межах пари. Наслідок: англійське й італійське слово з однаковим написанням (`come`) вважаються дублем — прийнятно, зафіксовано в M7.md. Merge імпорту — лише за англійським ключем/`id`. |
 | D27 | Дубль, виявлений після відповіді | Pending-запис видаляється, `.duplicate(existing)`; відсутні ready-варіанти існуючого (того ж англійського ключа) заповнюються з цієї ж відповіді. |
 | D28 | Коли витрачати токени на італійську | Нове слово — 1 комбінований запит (обидві мови). Старі записи — лише в режимі IT (перемикання/старт у IT/мережа/ключ) або вручну; пакети по 15, `ceil(n/15)` запитів; ready-варіант не запитується ніколи, крім явного «Оновити італійський переклад». Невалідний варіант у комбінованій відповіді не повторюється — йде в пакет. |
-| D29 | Помилки пакета | Таблиця §8.4: offline/ключ/401/403 — зупинка без змін; тимчасові — pending + backoff, зупинка; невалідна відповідь/refusal/400 — failed, далі наступний пакет. |
-| D30 | Варіанти при merge | `VariantMerge.combine`: ready > не-ready, новіший `updatedAt`, рівність → переможець D1; зміна лише варіантів рахується як `updated`. |
+| D29 | Помилки пакета | Таблиця §8.4: offline/ключ/401/403 — зупинка без змін; тимчасові — pending + backoff, зупинка; обрізана відповідь (`max_tokens`) — поділ пакета навпіл без повтору того самого промту; інша невалідна відповідь/refusal/400 — pending +1 спроба (після 5 — failed), далі наступний пакет. |
+| D30 | Варіанти при merge | `VariantMerge.combine`: ready > не-ready, інакше — варіант переможця D1; порівняння часу варіантів немає (поля немає). Зміна лише варіантів рахується як `updated`. |
 
 ---
 
@@ -1320,15 +1340,32 @@ README-інструкції відтворювані на чистому кор�
 `Languages/LanguagePair.swift`, `Languages/EnglishUkrainian.swift` (`renderings: [.italian]`, промт), `Claude/PromptBuilder.swift`,
 `Claude/LookupResponseParser.swift`, `Claude/ClaudeLookupService.swift`, `Claude/ClaudeConfiguration.swift` (`batchMaxTokens`),
 `Repository/DictionaryRepository.swift`, `Repository/EntryQuery.swift`, `Processing/EntryProcessor.swift`,
-`Processing/ProcessingTrigger.swift`, `UseCases/AddWordUseCase.swift`, `UseCases/NotificationText.swift`,
-`Transfer/DictionaryImporter.swift`, `Transfer/ImportMerger.swift`, `Settings/SettingsStore.swift`.
-App: `AppModel.swift`, `AppDelegate.swift` (створення `VariantBackfillProcessor` з тим самим `ClaudeLookupService`),
-`Views/DictionaryWindowView.swift`, `Views/EntryTableView.swift`, `Views/EntryEditorView.swift`.
-Тести ядра (`Tests/VocabCoreTests/`): `EntryVariantCodingTests.swift`, `CombinedLookupParserTests.swift`,
+`Processing/ProcessingTrigger.swift`, `Processing/PendingQueueProcessor.swift` (`.duplicate`: очистити `inFlight`/спроби
+для `removedID`), `UseCases/AddWordUseCase.swift`, `UseCases/NotificationText.swift`,
+`Transfer/DictionaryImporter.swift` (`parse(_:registry:)`), `Transfer/ImportMerger.swift`, `Settings/SettingsStore.swift`.
+App: `App/Sources/AppModel.swift` (режим відображення, доповнення, обробка `.duplicate` у всіх `switch` по
+`ProcessingResult`), `App/Sources/AppDelegate.swift` (створення `VariantBackfillProcessor` з тим самим
+`ClaudeLookupService`), `Views/DictionaryWindowView.swift`, `Views/EntryTableView.swift`, `Views/EntryEditorView.swift`
+(італійські поля — лише читання + «Оновити італійський переклад»).
+Тести ядра (`Tests/VocabCoreTests/`), **нові**: `EntryVariantCodingTests.swift`, `CombinedLookupParserTests.swift`,
+`PromptBuilderTests.swift` (новий файл: наявні промт-тести M2 лишаються в `ClaudeRequestBuilderTests.swift`),
 `VariantBatchParserTests.swift`, `VariantPromptBuilderTests.swift`, `TokenEconomyTests.swift`,
 `VariantBackfillProcessorTests.swift`, `CrossLanguageDedupTests.swift`, `EntryDisplayTests.swift`,
-`VariantImportMergeTests.swift`, доповнення `SettingsStoreTests.swift`, `PromptBuilderTests.swift`,
+`VariantImportMergeTests.swift`, `M7TestSupport.swift`; **доповнення**: `SettingsStoreTests.swift`, `EntryQueryTests.swift`,
 `NotificationTextTests.swift`, `ProcessingTriggerTests.swift`. App: `App/Tests/AppModelM7Tests.swift`.
+
+**Міграція наявних тестів M2–M6 (рішення: тести, яким італійська байдужа, працюють з парою без renderings).**
+`M7TestSupport.swift` оголошує `extension LanguagePair { static let englishUkrainianSourceOnly }` — той самий `id`
+`"en-uk"`, імена, `speechLanguageCode`, `prompt` як у `.englishUkrainian`, але `renderings: []` (поведінка M2: промт без
+додатків, без детекції, без варіантів). У наведених наборах `.englishUkrainian` / `LanguagePairRegistry(pairs:
+[.englishUkrainian])` механічно замінюється на `.englishUkrainianSourceOnly`; очікування не змінюються:
+`ClaudeRequestBuilderTests` (промт-тести M2), `ClaudeLookupServiceTests`, `M2TestSupport` (типові реєстри харнесів),
+`M2ReviewRegressionTests`, `PendingQueueProcessorTests`, `QueueConcurrencyTests`, `AddWordUseCaseTests`,
+`ServiceRequestHandlerTests`, `RedactingLoggerTests`. Без змін (не залежать від renderings або не роблять lookup):
+`LookupResponseParserTests` (стара `parse(_:kind:)`), `EntryCodingTests`, `FileDictionaryStore`/`Repository`/
+`Importer`/`Merger`/`Exporter`/`Transfer`-тести (записи без варіантів), `LanguagePairRegistryTests`, `SpeechServiceTests`,
+`AppModel*Tests` M1–M6 (без `variantBackfill`, режим EN за замовчуванням). Якщо якийсь з них падає через `Entry`
+з новими полями — Developer оновлює очікування й фіксує це у звіті. Нові тести M7 використовують `.englishUkrainian`.
 Документи: `docs/manual-tests/M7.md`, `README.md` (розділ «Італійська»).
 
 Умови для тестів кількості запитів: `ClaudeLookupService` + `MockURLProtocol` (лічильник запитів, §14) — реальний
@@ -1337,15 +1374,15 @@ HTTP-шар, а не стаб; `FixedDateProvider`; тимчасовий кат�
 | КП | Перевірка |
 |---|---|
 | M7.1 Сумісність формату: старий файл читається, без варіантів пише байт-у-байт як M6; `schemaVersion` = 1 | `EntryVariantCodingTests`: `testM6FileDecodesWithoutVariants`, `testEntryWithoutVariantsEncodesIdenticallyToM6` (порівняння байтів з фікстурою M6), `testVariantRoundTrip`, `testVariantKeysCamelCase`, `testEmptyVariantsNotEncoded`, `testSourceLanguageOmittedForPrimary`, `testMalformedVariantDroppedEntryKept`, `testUnknownVariantStatusDropped`, `testSchemaVersionStaysOne`, `testStoreLoadWithMalformedVariantIsNotCorrupted` (файл не переміщується в Backups) |
-| M7.2 Комбінований промт і розбір (en/it, детекція мови) | `PromptBuilderTests`: `testPairWithoutRenderingsPromptUnchanged`, `testCombinedPromptContainsItalianSchemaAndDetection`, `testCombinedPromptPlaceholdersFilled`; `CombinedLookupParserTests`: `testEnglishSourceWithItalianVariant`, `testItalianSourceDetected`, `testMissingSourceLanguageInferredFromKeys`, `testUnknownSourceLanguageFallsBackToPrimary`, `testInvalidVariantDroppedWhenSourceIsEnglish`, `testInvalidVariantInvalidatesResponseWhenSourceIsItalian`, `testPhraseForcesPhraseInVariant`, `testUnknownVariantIdsIgnored`, `testOldShapeStillParses` |
+| M7.2 Комбінований промт і розбір (en/it, детекція мови) | `PromptBuilderTests`: `testPairWithoutRenderingsPromptUnchanged`, `testCombinedPromptContainsItalianSchemaAndDetection`, `testCombinedPromptWithoutUnfilledPlaceholders`; `CombinedLookupParserTests`: `testEnglishSourceWithItalianVariant`, `testItalianSourceDetected`, `testMissingSourceLanguageInferredFromKeys`, `testUnknownSourceLanguageFallsBackToPrimary`, `testInvalidVariantDroppedWhenSourceIsEnglish`, `testInvalidVariantInvalidatesResponseWhenSourceIsItalian`, `testPhraseForcesPhraseInVariant`, `testUnknownVariantIdsIgnored`, `testOldShapeStillParses` |
 | M7.3 Рівно 1 запит на нове слово; обидві мови збережено | `TokenEconomyTests`: `testNewEnglishWordOneRequestBothRenderings` (через `AddWordUseCase`; 1 запит; `variants["it"].status == .ready`; дані у файлі після перезавантаження стору), `testNewItalianWordOneRequestStoresSourceLanguage` («casa» → `word = "house"`, `variants.it.word = "casa"`, `sourceLanguage = "it"`), `testInvalidVariantNotRetriedMarkedPending` (1 запит, варіант `pending`), `testMaxTokensForSingleLookupStays4096` |
-| M7.4 Дедуплікація в обох мовах | `CrossLanguageDedupTests`: `testItalianSelectionMatchesExistingItalianVariant` (0 запитів, `.duplicate`), `testEnglishSelectionMatchesExisting`, `testPendingVariantNotUsedForDedup`, `testStaleVariantNotUsedForDedup`, `testPostResponseDuplicateRemovesPendingAndReturnsExisting` (`ProcessingResult.duplicate`), `testPostResponseDuplicateFillsMissingVariantOfExisting` (0 додаткових запитів), `testConcurrentSameItalianWordAddedOnce` |
+| M7.4 Дедуплікація в обох мовах | `CrossLanguageDedupTests`: `testItalianSelectionMatchesExistingItalianVariant` (0 запитів, `.duplicate`), `testEnglishSelectionMatchesExisting`, `testPendingVariantNotUsedForDedup`, `testStaleVariantNotUsedForDedup`, `testPostResponseDuplicateRemovesPendingAndReturnsExisting` (`ProcessingResult.duplicate`), `testPostResponseDuplicateFillsMissingVariantOfExisting` (0 додаткових запитів), `testConcurrentSameItalianWordAddedOnce`, `testEditEnglishEntryNotBlockedByOtherItalianVariant` (запис A з `it: "casa"`; редагування запису B на англ. `casa` → успіх), `testUpdateChecksDuplicateOnlyWhenKeyChanged`, `testSetVariantsNeverBlockedByDuplicates` |
 | M7.5 Пакетний промт і розбір з частково невалідними елементами | `VariantPromptBuilderTests`: `testItemsEncodedCompactWithRefs`, `testItemsWrappedInTags`, `testMeaningLimitedToThree`; `VariantBatchParserTests`: `testAllValid`, `testPartialInvalidKeepsValid`, `testMissingIdsReportedMissing`, `testUnknownIdsIgnored`, `testDuplicateIdFirstWins`, `testStringNumericIdAccepted`, `testNotArrayInvalid`, `testCodeFenceStripped` |
-| M7.6 Пакетне доповнення: `ceil(n/15)` запитів, 0 для кешованих, часткові успіхи збережено | `VariantBackfillProcessorTests`: `testBackfill37EntriesMakesThreeRequests`, `testBackfillPersistsAfterEachBatch` (2-й пакет падає 500 → результати 1-го у файлі), `testSecondBackfillMakesZeroRequests`, `testReadyVariantsNeverRequested`, `testStaleVariantReRequested`, `testNonReadyEntriesSkipped`, `testOfflineStopsRunAfterOneRequestNoAttemptCounted`, `testUnauthorizedStopsRunVariantsUnchanged`, `testServerErrorMarksPendingWithBackoff`, `testInvalidResponseMarksBatchFailedAndContinues`, `testItemFailsAfterFiveAttempts`, `testFailedOnlyInBackfillAll`, `testRefreshMakesOneRequestOverwritesReady`, `testEntryEditedDuringRequestVariantDiscarded`, `testConcurrentCallReportsAlreadyRunning`, `testBatchUsesMaxTokens8192AndFourBodyKeys`, `testEntryUpdatedAtUnchangedByBackfill`, `testUpdateDoesNotOverwriteStoredVariants` |
+| M7.6 Пакетне доповнення: `ceil(n/15)` запитів, 0 для кешованих, часткові успіхи збережено | `VariantBackfillProcessorTests`: `testBackfill37EntriesMakesThreeRequests`, `testBackfillPersistsAfterEachBatch` (2-й пакет падає 500 → результати 1-го у файлі), `testSecondBackfillMakesZeroRequests`, `testReadyVariantsNeverRequested`, `testStaleVariantReRequested`, `testNonReadyEntriesSkipped`, `testOfflineStopsRunAfterOneRequestNoAttemptCounted`, `testUnauthorizedStopsRunVariantsUnchanged`, `testServerErrorMarksPendingWithBackoff`, `testTruncatedBatchSplitsInsteadOfRepeating` (пакет 15 обрізано → запити 15, 8, 7 = рівно 3; тексти запитів 2 і 3 різні й не збігаються з 1-м; усі 15 ready), `testTruncatedSingleItemMarkedPendingNoRepeat` (1 елемент обрізано → рівно 1 запит, pending +1), `testInvalidResponseMarksBatchPendingAndContinues` (2 пакети: 1-й не-JSON → pending +1, 2-й обробляється; рівно 2 запити), `testBatchServiceDoesNotRetrySamePrompt`, `testItemFailsAfterFiveAttempts`, `testFailedOnlyInBackfillAll`, `testRefreshMakesOneRequestOverwritesReady`, `testRefreshItalianSourceKeepsSelectedWord` (`sourceLanguage = "it"`, модель повертає інше слово → `variants.it.word` лишається «casa», 1 запит, елемент запиту містить `keep`), `testOnlyEntriesOfGivenPairBackfilled`, `testEntryEditedDuringRequestVariantDiscarded`, `testConcurrentCallReportsAlreadyRunning`, `testBatchUsesMaxTokens8192AndFourBodyKeys`, `testEntryUpdatedAtUnchangedByBackfill`, `testUpdateDoesNotOverwriteStoredVariants` |
 | M7.7 Відображення/пошук/сортування в активній мові | `EntryDisplayTests`: `testPrimaryModeShowsEnglish`, `testItalianModeShowsVariant`, `testMissingVariantFallback`, `testStaleVariantFallback`; `EntryQueryTests` (доповнення): `testSearchItalianWordInItalianMode`, `testSearchFallbackRowsByEnglish`, `testAlphabeticalByItalianKey` |
-| M7.8 Імпорт/merge з варіантами | `VariantImportMergeTests`: `testImporterDropsInvalidVariantKeepsEntry`, `testImporterDropsReadyVariantWithoutTranslations`, `testMergeAdoptsImportedVariantCountsUpdated`, `testMergeKeepsLocalReadyOverImportedPending`, `testMergeNewerVariantWins`, `testMergeDropsVariantsWithForeignSourceKey`, `testExportImportRoundTripWithVariants`, `testM6ExportImportsUnchanged` |
+| M7.8 Імпорт/merge з варіантами | `VariantImportMergeTests`: `testImporterDropsInvalidVariantKeepsEntry`, `testImporterDropsReadyVariantWithoutTranslations`, `testImporterParseDefaultRegistry` (`parse(_:)` = `parse(_:registry: .shared)`), `testImporterUnknownSourceLanguageCleared`, `testMergeAdoptsImportedVariantCountsUpdated`, `testMergeKeepsLocalReadyOverImportedPending`, `testMergeBothReadyKeepsD1WinnerVariant`, `testMergeDropsVariantsWithForeignSourceKey`, `testExportImportRoundTripWithVariants`, `testM6ExportImportsUnchanged` |
 | M7.9 Налаштування, тригери, тексти | `SettingsStoreTests`: `testDisplayLanguageDefaultsToNil`, `testDisplayLanguagePersists`, `testInMemoryDisplayLanguage`; `ProcessingTriggerTests`: `testVariantMessagesContainNoWords`; `NotificationTextTests`: `testAddedItalianUsesItalianRendering`, `testDuplicateItalian` |
-| M7.10 Застосунок: перемикач, збереження режиму, рендер, одноразове доповнення | `AppModelM7Tests` (стаб `VariantBatchLookupService` з лічильником): `testDisplayLanguagePersistsAcrossModelInstances`, `testUnknownStoredLanguageFallsBackToPrimary`, `testSwitchToItalianTriggersBackfillOnce` (перше перемикання — 1 прохід, друге — 0 викликів lookup), `testSwitchToEnglishDoesNotBackfill`, `testStartupInItalianModeBackfills`, `testSwitchResetsPageToOne`, `testDisplayedPageUsesItalianFields`, `testBackfillAllIncludesFailed`, `testRefreshVariantCallsLookupOnce`, `testEditVariantInItalianModeKeepsEntryUpdatedAt` + ⏳ manual |
+| M7.10 Застосунок: перемикач, збереження режиму, рендер, одноразове доповнення | `AppModelM7Tests` (стаб `VariantBatchLookupService` з лічильником): `testDisplayLanguagePersistsAcrossModelInstances`, `testUnknownStoredLanguageFallsBackToPrimary`, `testSwitchToItalianTriggersBackfillOnce` (перше перемикання — 1 прохід, друге — 0 викликів lookup), `testSwitchToEnglishDoesNotBackfill`, `testStartupInItalianModeBackfills`, `testSwitchResetsPageToOne`, `testDisplayedPageUsesItalianFields`, `testBackfillAllIncludesFailed`, `testRefreshVariantCallsLookupOnce`, `testRefreshVariantKeepsEntryUpdatedAt`, `testDuplicateResultHandledInRetry` + ⏳ manual |
 | M7.11 Документація | Judge: `README.md` розділ «Італійська» (перемикач, автовизначення, коли витрачаються токени: 1 запит/слово, `ceil(n/15)` для доповнення, «Оновити італійський переклад» — лише вручну); `M7.md` |
 
 `M7.md` (реальний Mac, `sw_vers`, реальний ключ): **A. Перемикач** — сегменти EN | IT у toolbar (записати
