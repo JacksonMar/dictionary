@@ -104,4 +104,27 @@ final class VariantBatchParserTests: XCTestCase {
         let chatty = "Here you go:\n\(M7.batchJSON([element(2, "cane")]))\nDone."
         XCTAssertEqual(readyWord(try VariantBatchResponseParser.parse(chatty, items: items)[2]), "cane")
     }
+
+    func testWholeTextArrayParsed() throws {
+        // Увесь текст — масив; дужки всередині рядків не заважають (першою пробою є розбір усього тексту).
+        var tricky = element(1, "correre")
+        tricky["example"] = ["source": "Run ] [ fast.", "translation": "Біжи ] [ швидко."]
+        let text = "  " + M7.batchJSON([tricky, element(2, "cane")]) + "\n"
+        let outcomes = try VariantBatchResponseParser.parse(text, items: items)
+        XCTAssertEqual(readyWord(outcomes[1]), "correre")
+        XCTAssertEqual(readyWord(outcomes[2]), "cane")
+        XCTAssertEqual(outcomes[3], .missing)
+        guard case .ready(let first) = outcomes[1] else { return XCTFail("not ready") }
+        XCTAssertEqual(first.example.source, "Run ] [ fast.")
+    }
+
+    /// Поточна поведінка: обгортка `{"items":[…]}` не є масивом верхнього рівня, але запасний шлях
+    /// (підрядок від першої `[` до останньої `]`) витягує внутрішній масив — елементи розбираються.
+    func testItemsObjectWrapperCurrentBehaviour() throws {
+        let wrapped = M7.jsonString(["items": [element(1, "correre"), element(3, "arrendersi", ipa: "", pos: "verb")]])
+        let outcomes = try VariantBatchResponseParser.parse(wrapped, items: items)
+        XCTAssertEqual(readyWord(outcomes[1]), "correre")
+        XCTAssertEqual(outcomes[2], .missing)
+        XCTAssertEqual(readyWord(outcomes[3]), "arrendersi")
+    }
 }

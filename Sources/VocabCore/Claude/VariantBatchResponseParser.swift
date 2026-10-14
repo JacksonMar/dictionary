@@ -40,6 +40,10 @@ public enum VariantBatchResponseParser {
     /// Знімає code fence; підрядок від першої `[` до останньої `]`.
     static func jsonArray(in text: String) throws -> [Any] {
         let unfenced = LookupResponseParser.stripCodeFence(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        // Спершу — увесь текст як масив (дужки всередині рядків не плутають вибір підрядка).
+        if let object = try? JSONSerialization.jsonObject(with: Data(unfenced.utf8)), let array = object as? [Any] {
+            return array
+        }
         guard let start = unfenced.firstIndex(of: "["),
               let end = unfenced.lastIndex(of: "]"),
               start < end else {

@@ -32,13 +32,15 @@ public enum VariantPromptBuilder {
             )
         }
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        // Без `.withoutEscapingSlashes`: «/» кодується як «\/», тож «</items>» у слові/перекладі не закриє тег;
+        // «<» додатково екрануємо як «\u003c» (валідний JSON-escape) — жоден тег не з'явиться всередині даних.
+        encoder.outputFormatting = [.sortedKeys]
         // Кодування рядків, цілих і масивів рядків не може завершитися помилкою (помилки JSONEncoder
         // стосуються лише нескінченних чисел і некоректних контейнерів), тож запасне значення — формальність.
         guard let data = try? encoder.encode(encoded), let text = String(data: data, encoding: .utf8) else {
             return "[]"
         }
-        return text
+        return text.replacingOccurrences(of: "<", with: "\\u003c")
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

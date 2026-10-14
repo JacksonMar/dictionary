@@ -263,4 +263,37 @@ final class ServiceRequestHandlerTests: XCTestCase {
         XCTAssertEqual(observedAdded + observedInFlight, 25)
         print("testAddDuringProcessAllReportsOutcome: added=\(observedAdded) inFlight=\(observedInFlight)")
     }
+
+    // MARK: - M7: duplicate notification in the selection language
+
+    func testItalianSelectionDuplicateNotifiesInItalianWithoutLookup() async throws {
+        let h = try await QueueHarness.make([.success(ClaudeFixtures.expectedRunResult)],
+                                            registry: LanguagePairRegistry(pairs: [.englishUkrainian]))
+        harness?.remove()
+        harness = h
+        let house = M7.entry(word: "house", translations: ["будинок", "дім"],
+                             variants: ["it": M7.readyVariant("casa", sourceWord: "house", translations: ["дім", "оселя"])])
+        try await h.repository.replaceAll([house])
+        let handler = ServiceRequestHandler(useCase: AddWordUseCase(
+            repository: h.repository,
+            processor: h.queue,
+            settings: InMemorySettingsStore(),
+            registry: LanguagePairRegistry(pairs: [.englishUkrainian])
+        ))
+
+        let italian = await handler.handle(text: "casa")
+
+        guard case .duplicate(let existing) = italian.outcome else { return XCTFail("expected duplicate, got \(italian)") }
+        XCTAssertEqual(existing.id, house.id)
+        XCTAssertEqual(italian.notification, NotificationContent(title: "Вже є в словнику", body: "casa — дім, оселя"))
+        XCTAssertTrue(italian.notification.body.hasPrefix("casa —"))
+
+        let english = await handler.handle(text: "House")
+        guard case .duplicate = english.outcome else { return XCTFail("expected duplicate, got \(english)") }
+        XCTAssertEqual(english.notification.body, "house — будинок, дім")
+
+        XCTAssertEqual(h.lookup.callCount, 0, "duplicates never reach Claude")
+        let count = await h.repository.allEntries().count
+        XCTAssertEqual(count, 1)
+    }
 }

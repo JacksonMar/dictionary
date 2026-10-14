@@ -186,4 +186,51 @@ final class NotificationTextTests: XCTestCase {
         pending.status = .pending
         XCTAssertEqual(NotificationText.make(for: .duplicate(pending)).body, "house — очікує обробки")
     }
+
+    // MARK: - M7: duplicate language by selection (D26)
+
+    /// Англійський запис «house» (`sourceLanguage == nil`) з ready-варіантом it «casa».
+    private func englishHouseWithCasa() -> Entry {
+        M7.entry(word: "house", translations: ["будинок", "дім"],
+                 variants: ["it": M7.readyVariant("casa", sourceWord: "house", translations: ["дім", "оселя"])])
+    }
+
+    func testDuplicateBodyFollowsSelectionLanguage() {
+        let house = englishHouseWithCasa()
+        XCTAssertNil(house.sourceLanguage)
+
+        let italian = NotificationText.make(for: .duplicate(house), selection: "casa")
+        XCTAssertEqual(italian.title, "Вже є в словнику")
+        XCTAssertTrue(italian.body.hasPrefix("casa —"), italian.body)
+        XCTAssertEqual(italian.body, "casa — дім, оселя")
+        // Сире виділення (регістр, пунктуація, пробіли) нормалізується так само.
+        XCTAssertEqual(NotificationText.make(for: .duplicate(house), selection: "  Casa.\n").body, "casa — дім, оселя")
+
+        let english = NotificationText.make(for: .duplicate(house), selection: "house")
+        XCTAssertEqual(english.body, "house — будинок, дім")
+        // Без selection — як раніше (мова sourceLanguage == nil → англійська).
+        XCTAssertEqual(NotificationText.make(for: .duplicate(house)).body, "house — будинок, дім")
+    }
+
+    func testDuplicateLanguageDetection() {
+        let house = englishHouseWithCasa()
+        XCTAssertEqual(NotificationText.duplicateLanguage(selection: "casa", entry: house), "it")
+        XCTAssertNil(NotificationText.duplicateLanguage(selection: "house", entry: house))
+        XCTAssertNil(NotificationText.duplicateLanguage(selection: "dog", entry: house))
+        XCTAssertNil(NotificationText.duplicateLanguage(selection: "   ", entry: house))
+
+        // Варіант не ready → nil.
+        var pending = house
+        pending.variants = ["it": M7.unfilledVariant(.pending, sourceWord: "house", word: "casa")]
+        XCTAssertNil(NotificationText.duplicateLanguage(selection: "casa", entry: pending))
+    }
+
+    func testDuplicateLanguageNilWhenSelectionMatchesEnglishWordToo() {
+        // Англійське слово й італійський варіант мають той самий ключ (D25) → англійська.
+        let piano = M7.entry(word: "piano", translations: ["фортепіано"],
+                             variants: ["it": M7.readyVariant("piano", sourceWord: "piano", translations: ["тихо"])])
+        XCTAssertNil(NotificationText.duplicateLanguage(selection: "piano", entry: piano))
+        XCTAssertNil(NotificationText.duplicateLanguage(selection: " PIANO! ", entry: piano))
+        XCTAssertEqual(NotificationText.make(for: .duplicate(piano), selection: "piano").body, "piano — фортепіано")
+    }
 }

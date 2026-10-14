@@ -28,7 +28,9 @@ public enum NotificationText {
     /// Скільки перекладів показувати в сповіщенні.
     public static let maxTranslations = 3
 
-    public static func make(for outcome: AddWordOutcome) -> NotificationContent {
+    /// - Parameter selection: сирий виділений текст запиту (Services). Для `.duplicate` визначає мову, ключ якої
+    ///   збігся з виділенням (`duplicateLanguage`); `nil` — як раніше (мова `entry.sourceLanguage`).
+    public static func make(for outcome: AddWordOutcome, selection: String? = nil) -> NotificationContent {
         switch outcome {
         case .added(let entry):
             let display = selectionDisplay(entry)
@@ -40,7 +42,7 @@ public enum NotificationText {
             let details: String
             switch entry.status {
             case .ready:
-                let display = selectionDisplay(entry)
+                let display = selection.map { duplicateDisplay(entry, selection: $0) } ?? selectionDisplay(entry)
                 let translations = translationsText(display)
                 details = translations.isEmpty ? display.word : "\(display.word) — \(translations)"
             case .pending, .failed:
@@ -99,6 +101,28 @@ public enum NotificationText {
     /// виділення не ready — англійське відображення.
     private static func selectionDisplay(_ entry: Entry) -> EntryDisplay {
         let display = EntryDisplay.make(entry, languageID: entry.sourceLanguage)
+        return display.isFallback ? EntryDisplay.make(entry, languageID: nil) : display
+    }
+
+    /// Мова, ключ якої збігся з виділенням (D26): id ready-варіанта `x`, якщо `key(selection) == key(x.word)`;
+    /// `nil` — англійське слово запису (зокрема коли ключ збігається і з `entry.word`, D25) або збігу немає.
+    public static func duplicateLanguage(selection: String, entry: Entry) -> String? {
+        let selectionKey = TextNormalizer.key(TextNormalizer.clean(selection))
+        guard !selectionKey.isEmpty, selectionKey != TextNormalizer.key(entry.word) else {
+            return nil
+        }
+        // Сортування — детермінований вибір, якщо кілька варіантів мають однаковий ключ.
+        for languageID in (entry.variants ?? [:]).keys.sorted() {
+            if let variantWord = entry.readyVariant(languageID)?.word, TextNormalizer.key(variantWord) == selectionKey {
+                return languageID
+            }
+        }
+        return nil
+    }
+
+    /// Відображення дубля мовою, ключ якої збігся з виділенням; інакше англійське.
+    private static func duplicateDisplay(_ entry: Entry, selection: String) -> EntryDisplay {
+        let display = EntryDisplay.make(entry, languageID: duplicateLanguage(selection: selection, entry: entry))
         return display.isFallback ? EntryDisplay.make(entry, languageID: nil) : display
     }
 

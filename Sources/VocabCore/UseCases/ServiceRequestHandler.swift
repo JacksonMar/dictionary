@@ -10,8 +10,9 @@ public struct ServiceResponse: Equatable, Sendable {
         self.notification = notification
     }
 
-    public init(outcome: AddWordOutcome) {
-        self.init(outcome: outcome, notification: NotificationText.make(for: outcome))
+    /// `selection` — сирий текст запиту; потрібен для мови сповіщення про дубль (`NotificationText.make`).
+    public init(outcome: AddWordOutcome, selection: String? = nil) {
+        self.init(outcome: outcome, notification: NotificationText.make(for: outcome, selection: selection))
     }
 }
 
@@ -32,6 +33,6 @@ public final class ServiceRequestHandler: ServiceRequestHandling {
     public func handle(text: String?) async -> ServiceResponse {
         // Валідація (`SelectionValidator`) виконується всередині `AddWordUseCase.execute`.
         let outcome = await useCase.execute(rawText: text)
-        return ServiceResponse(outcome: outcome)
+        return ServiceResponse(outcome: outcome, selection: text)
     }
 }
