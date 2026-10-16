@@ -4,6 +4,7 @@ extension LanguagePair {
     /// Англійська → українська. M7: з італійським відображенням (`renderings: [.italian]`, §3.2).
     /// Текст шаблонів — як у M2; для пари з `renderings` `PromptBuilder` сам додає вимогу додаткових ключів і
     /// мовно-нейтральні формулювання (§7.7), тож пара без `renderings` з цими шаблонами дає рівно промт M2.
+    /// M8 (D31): `domainInstruction` — IT/QA-контекст, додається в кінець system (≤ 70 слів).
     public static let englishUkrainian = LanguagePair(
         id: "en-uk",
         sourceLanguageName: "English",
@@ -44,6 +45,13 @@ extension LanguagePair {
             Translate this English phrase into Ukrainian and return the JSON object. \
             It is a phrase, so "part_of_speech" must be "phrase".
             <text>{{TEXT}}</text>
+            """,
+            domainInstruction: """
+            Context: the user works in software development and QA. If the word or phrase has an IT or QA \
+            meaning, list its Ukrainian translations first, then other common meanings (same limits). \
+            Write the example (source and translation) in an IT/QA context (bug reports, tests, CI, code review, \
+            releases) when the word fits naturally; otherwise a neutral everyday example. This applies to the \
+            top level and every variant.
             """
         ),
         sourceLanguageCode: "en",

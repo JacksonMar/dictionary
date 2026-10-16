@@ -15,11 +15,15 @@ public struct RenderingPromptTemplate: Hashable, Sendable {
     public let batchSystem: String
     /// Шаблон user-повідомлення пакетного доповнення з плейсхолдером `{{ITEMS}}`.
     public let batchUser: String
+    /// M8 (D31): доменна інструкція (IT/QA-контекст) для пакетного доповнення; `VariantPromptBuilder` додає її
+    /// в кінець `batchSystem`, якщо вона непорожня. У комбінований промт не додається (там — інструкція пари).
+    public let domainInstruction: String
 
-    public init(combinedInstruction: String, batchSystem: String, batchUser: String) {
+    public init(combinedInstruction: String, batchSystem: String, batchUser: String, domainInstruction: String = "") {
         self.combinedInstruction = combinedInstruction
         self.batchSystem = batchSystem
         self.batchUser = batchUser
+        self.domainInstruction = domainInstruction
     }
 }
 

@@ -12,12 +12,14 @@ public enum VariantPromptBuilder {
         let keep: String?
     }
 
-    /// `system` = `language.prompt.batchSystem`; `user` = `batchUser`, де `{{ITEMS}}` — компактний JSON-масив
+    /// `system` = `language.prompt.batchSystem` (+ `"\n\n" + domainInstruction`, якщо непорожня — M8, D31);
+    /// `user` = `batchUser`, де `{{ITEMS}}` — компактний JSON-масив
     /// (`.sortedKeys`, без `prettyPrinted`) усередині `<items>…</items>` (теги — у шаблоні).
     public static func buildBatch(items: [VariantRequestItem], language: RenderingLanguage, pair: LanguagePair) -> BuiltPrompt {
         let user = language.prompt.batchUser
             .replacingOccurrences(of: RenderingPromptTemplate.itemsPlaceholder, with: encodeItems(items))
-        return BuiltPrompt(system: language.prompt.batchSystem, user: user)
+        let system = PromptBuilder.withDomainInstruction(language.prompt.batchSystem, language.prompt.domainInstruction)
+        return BuiltPrompt(system: system, user: user)
     }
 
     /// Компактний JSON-масив елементів.

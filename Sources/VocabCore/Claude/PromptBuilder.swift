@@ -19,6 +19,9 @@ public struct BuiltPrompt: Equatable, Sendable {
 /// без назви мови джерела в «For the … word or phrase») + інструкція детекції мови + `combinedInstruction`
 /// кожної мови відображення; `user` — шаблон пари без назви мови джерела («Translate this word…»).
 /// Для пари без `renderings` промт **рівно** як у M2.
+///
+/// M8 (D31): якщо `pair.prompt.domainInstruction` непорожня, вона додається в кінець system (один раз, в обох
+/// режимах). `domainInstruction` мов відображення сюди не додається.
 public enum PromptBuilder {
     /// Рядок, що додається в кінець user-повідомлення при повторі після невалідної відповіді (§7.5).
     public static let retrySuffix = "Попередня відповідь була невалідною. Поверни лише JSON."
@@ -36,11 +39,18 @@ public enum PromptBuilder {
         }
         guard !pair.renderings.isEmpty else {
             let user = template.replacingOccurrences(of: PromptTemplate.textPlaceholder, with: text)
-            return BuiltPrompt(system: pair.prompt.system, user: user)
+            let system = withDomainInstruction(pair.prompt.system, pair.prompt.domainInstruction)
+            return BuiltPrompt(system: system, user: user)
         }
         let user = neutralizedUserTemplate(template, pair: pair)
             .replacingOccurrences(of: PromptTemplate.textPlaceholder, with: text)
-        return BuiltPrompt(system: combinedSystem(for: pair), user: user)
+        let system = withDomainInstruction(combinedSystem(for: pair), pair.prompt.domainInstruction)
+        return BuiltPrompt(system: system, user: user)
+    }
+
+    /// M8 (D31): `system + "\n\n" + instruction`, якщо інструкція непорожня; інакше `system` без змін.
+    static func withDomainInstruction(_ system: String, _ instruction: String) -> String {
+        instruction.isEmpty ? system : system + "\n\n" + instruction
     }
 
     /// Той самий промт з інструкцією повернути лише JSON у кінці user-повідомлення.

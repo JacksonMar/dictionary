@@ -10,11 +10,15 @@ public struct PromptTemplate: Hashable, Sendable {
     public let userWord: String
     /// Шаблон user-повідомлення для фрази.
     public let userPhrase: String
+    /// M8 (D31): доменна інструкція (IT/QA-контекст), яку `PromptBuilder` додає в кінець system, якщо вона
+    /// непорожня. Порожньо → промт без змін.
+    public let domainInstruction: String
 
-    public init(system: String, userWord: String, userPhrase: String) {
+    public init(system: String, userWord: String, userPhrase: String, domainInstruction: String = "") {
         self.system = system
         self.userWord = userWord
         self.userPhrase = userPhrase
+        self.domainInstruction = domainInstruction
     }
 }
 

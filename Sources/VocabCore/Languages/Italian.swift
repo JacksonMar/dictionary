@@ -2,6 +2,7 @@ import Foundation
 
 extension RenderingLanguage {
     /// Італійське відображення записів пари `en-uk` (M7). Переклади й переклади прикладів — українською.
+    /// M8 (D31): `domainInstruction` — IT/QA-контекст лише для пакетного доповнення (≤ 70 слів).
     public static let italian = RenderingLanguage(
         id: "it",
         shortTitle: "IT",
@@ -53,6 +54,12 @@ extension RenderingLanguage {
             batchUser: """
             Give the Italian rendering of each of these entries and return the JSON array.
             <items>{{ITEMS}}</items>
+            """,
+            domainInstruction: """
+            Context: the user works in software development and QA. If the Italian word or phrase has an IT or QA \
+            meaning, list its Ukrainian translations first, then other common meanings (same limits). \
+            Write the example (source and translation) in an IT/QA context (bug reports, tests, CI, \
+            code review, releases) when the word fits naturally; otherwise a neutral everyday example.
             """
         )
     )
