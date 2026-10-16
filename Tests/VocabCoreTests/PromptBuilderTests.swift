@@ -19,7 +19,11 @@ final class CombinedPromptBuilderTests: XCTestCase {
         XCTAssertEqual(phrase.user, pair.prompt.userPhrase.replacingOccurrences(of: "{{TEXT}}", with: "give up"))
 
         // Шаблони пари не змінилися відносно M2: та сама пара з `.englishUkrainian` без renderings.
-        XCTAssertEqual(LanguagePair.englishUkrainian.prompt, pair.prompt)
+        // M8 (D31): `.englishUkrainian.prompt` додатково несе `domainInstruction`; решта шаблонів — та сама.
+        XCTAssertEqual(LanguagePair.englishUkrainian.prompt.system, pair.prompt.system)
+        XCTAssertEqual(LanguagePair.englishUkrainian.prompt.userWord, pair.prompt.userWord)
+        XCTAssertEqual(LanguagePair.englishUkrainian.prompt.userPhrase, pair.prompt.userPhrase)
+        XCTAssertEqual(pair.prompt.domainInstruction, "")
     }
 
     func testCombinedPromptContainsItalianSchemaAndDetection() {

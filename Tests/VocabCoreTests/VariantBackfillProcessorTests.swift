@@ -584,7 +584,10 @@ final class VariantBackfillProcessorTests: XCTestCase {
         XCTAssertEqual(body["max_tokens"] as? Int, 8192)
         XCTAssertEqual(ClaudeConfiguration.batchMaxTokens, 8192)
         XCTAssertEqual(body["model"] as? String, "claude-test-model")
-        XCTAssertEqual(body["system"] as? String, RenderingLanguage.italian.prompt.batchSystem)
+        XCTAssertEqual(
+            body["system"] as? String,
+            RenderingLanguage.italian.prompt.batchSystem + "\n\n" + RenderingLanguage.italian.prompt.domainInstruction
+        )
         XCTAssertEqual(request.request.value(forHTTPHeaderField: "x-api-key"), ClaudeFixtures.apiKey)
         XCTAssertFalse(String(decoding: request.body, as: UTF8.self).contains(ClaudeFixtures.apiKey))
         let item = try XCTUnwrap(M7.items(request).first)

@@ -30,7 +30,10 @@ final class VariantPromptBuilderTests: XCTestCase {
 
     func testItemsWrappedInTags() {
         let prompt = VariantPromptBuilder.buildBatch(items: items, language: .italian, pair: .englishUkrainian)
-        XCTAssertEqual(prompt.system, RenderingLanguage.italian.prompt.batchSystem)
+        XCTAssertEqual(
+            prompt.system,
+            RenderingLanguage.italian.prompt.batchSystem + "\n\n" + RenderingLanguage.italian.prompt.domainInstruction
+        )
         XCTAssertTrue(prompt.user.hasPrefix("Give the Italian rendering"))
         XCTAssertTrue(prompt.user.hasSuffix("]</items>"))
         XCTAssertEqual(prompt.user.components(separatedBy: "<items>").count, 2, "exactly one <items> block")

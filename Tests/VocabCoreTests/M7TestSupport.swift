@@ -16,7 +16,12 @@ extension LanguagePair {
         sourceLanguageName: LanguagePair.englishUkrainian.sourceLanguageName,
         targetLanguageName: LanguagePair.englishUkrainian.targetLanguageName,
         speechLanguageCode: LanguagePair.englishUkrainian.speechLanguageCode,
-        prompt: LanguagePair.englishUkrainian.prompt,
+        // M8 (D31): шаблони en-uk без `domainInstruction` — промт рівно як у M2/M7.
+        prompt: PromptTemplate(
+            system: LanguagePair.englishUkrainian.prompt.system,
+            userWord: LanguagePair.englishUkrainian.prompt.userWord,
+            userPhrase: LanguagePair.englishUkrainian.prompt.userPhrase
+        ),
         sourceLanguageCode: LanguagePair.englishUkrainian.sourceLanguageCode,
         sourceShortTitle: LanguagePair.englishUkrainian.sourceShortTitle,
         renderings: []
