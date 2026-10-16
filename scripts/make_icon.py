@@ -1,5 +1,5 @@
 # Генерує App/Resources/Assets.xcassets/AppIcon.appiconset (потрібен Pillow):
-#   python3 App/Resources/make_icon.py App/Resources/Assets.xcassets/AppIcon.appiconset /tmp/icon-preview.png
+#   python3 scripts/make_icon.py App/Resources/Assets.xcassets/AppIcon.appiconset /tmp/icon-preview.png
 import sys, os, json
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
