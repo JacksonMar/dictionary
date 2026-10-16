@@ -331,13 +331,13 @@ final class DomainPromptTests: XCTestCase {
         XCTAssertFalse(system.contains(Self.englishInstruction))
     }
 
-    // MARK: - Відбитки текстів M7 (FNV-1a 64, UTF-8)
+    // MARK: - Відбитки текстів M7 (FNV-1a 64, UTF-8), обчислені на коміті a3c06da (M7, до M8)
 
-    private static let m7SystemFingerprint: UInt64 = 0
-    private static let m7UserWordFingerprint: UInt64 = 0
-    private static let m7UserPhraseFingerprint: UInt64 = 0
-    private static let m7CombinedSystemFingerprint: UInt64 = 0
-    private static let m7CombinedInstructionFingerprint: UInt64 = 0
-    private static let m7BatchSystemFingerprint: UInt64 = 0
-    private static let m7BatchUserFingerprint: UInt64 = 0
+    private static let m7SystemFingerprint: UInt64 = 0xC0DB_4B5C_D059_D333
+    private static let m7UserWordFingerprint: UInt64 = 0x214F_7C75_98A4_EC5E
+    private static let m7UserPhraseFingerprint: UInt64 = 0xB6C8_C24C_6834_21C7
+    private static let m7CombinedSystemFingerprint: UInt64 = 0xD4DE_7E39_49DC_85D4
+    private static let m7CombinedInstructionFingerprint: UInt64 = 0x55EC_CE1C_1900_4447
+    private static let m7BatchSystemFingerprint: UInt64 = 0x17B5_FD05_BE79_2156
+    private static let m7BatchUserFingerprint: UInt64 = 0xDBD4_6C97_93FB_DCC9
 }
