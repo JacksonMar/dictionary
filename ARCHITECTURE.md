@@ -1165,6 +1165,8 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   голосу) — як U11; кнопка озвучення лишається, `nil`-голос = системний за замовчуванням.
 - **U18** (M7, не macOS API, а якість моделі) Точність `source_language` для коротких слів, що існують в обох мовах,
   і якість італійської IPA. Фіксується в M7.md D.
+- **U19** (M8, якість моделі) Чи модель стабільно ставить IT/QA-значення першим і не «притягує» технічний контекст
+  до нетехнічних слів; чи вистачає 8192 `max_tokens` на пакет 10 × (en + it). Фіксується в M8.md A/B; план Б — `batchSize` 5.
 
 ---
 
@@ -1397,6 +1399,83 @@ HTTP-шар, а не стаб; `FixedDateProvider`; тимчасовий кат�
 спроби максимум; увімкнути мережу → доповнено. **F. Явне оновлення** — «Оновити італійський переклад» → 1 запит.
 **G. Озвучення** — італійське слово голосом `it-IT` (записати наявність голосу — U17). **H. Сумісність** — імпорт
 експорту M6 і експорт з варіантами на інший профіль; перевірка `schemaVersion: 1`.
+
+### M8 — IT/QA-контекст перекладів
+
+Джерело: запит користувача 2026-10-16 (переклади й приклади — у контексті IT/QA). Рішення користувача: контекст
+**завжди** (без налаштування); весь наявний словник перекладається **один раз** за явною дією в Settings.
+
+| # | Питання | Рішення |
+|---|---|---|
+| D31 | Де живе інструкція IT/QA | Нові поля шаблонів з дефолтом `""` (наявні `init` компілюються): `PromptTemplate.domainInstruction` (en-uk) і `RenderingPromptTemplate.domainInstruction` (italian) — константи в `EnglishUkrainian.swift`/`Italian.swift`, ≤ 70 слів. `PromptBuilder.build` (і пара без renderings, і комбінований) додає `"\n\n" + pair.prompt.domainInstruction` у кінець system, якщо непорожнє; формулювання охоплює верхній рівень **і** всі `variants`. `VariantPromptBuilder.buildBatch`: system = `batchSystem + "\n\n" + language.prompt.domainInstruction`. JSON-схеми й user-шаблони не змінюються. Текст en-uk (орієнтир): «Context: the user works in software development and QA. If the word or phrase has an IT, software-development or QA meaning, list the Ukrainian translations of that meaning first, then other common meanings (same limits). Write the example (source and translation) in an IT/QA context — bug reports, test cases, CI, code review, releases — when the word fits naturally; otherwise a neutral everyday example. This applies to the top level and to every variant.» Italian — те саме для італійського слова (самодостатній текст). |
+| D32 | Маркер «перекладено поточними промтами» | `Entry.promptProfile: String?` (опційне, `encodeIfPresent`, порожній → `nil`; у кастомному `init(from:)` — `try?`-декодування: не рядок → `nil`, запис не відкидається). `LanguagePair.promptProfile: String?` (default `nil`; `.englishUkrainian` = `"it-qa-1"`). Запис **актуальний**, якщо `entry.promptProfile == pair.promptProfile`. `schemaVersion` = 1 (D21). Ставиться: `EntryProcessor.applySuccess` (нове слово/повтор), `RetranslationProcessor`, ручне додавання (`EntryDraft.promptProfile`, `AppModel.addManual` ставить профіль пари — дані користувача не перезаписуються). Не змінюють: `update(_:)` редактора (поле береться з аргументу як є), M7-доповнення варіантів. Наступна зміна промтів = нове значення (`"it-qa-2"`) — без змін коду ядра. |
+| D33 | Що перекладається повторно | Записи пари з `status == .ready` і `promptProfile != pair.promptProfile` (pending/failed отримають нові промти через чергу). Пара з `promptProfile == nil` або порожнім `PromptTemplate.batchSystem` → 0 придатних. Порядок `createdAt` ↑. Слова користувача **не змінюються**: `entry.word` (англ.) завжди лишається; при `sourceLanguage == "it"` — `variants["it"].word` лишається (у запиті `"keep":{"it":"casa"}`, після відповіді примусово). Оновлюються: `lemma`, `partOfSpeech` (фраза → `"phrase"`), `transcription`, `translations`, `example`, варіант кожної мови (`ready`, `sourceKey = key(word)`), `promptProfile`, `lastError = nil`; `sourceLanguage`, `id`, `createdAt` — ні. |
+| D34 | Пакети й токени | `RetranslationProcessor.defaultBatchSize = 10` (обидві мови в елементі ≈ 400 токенів), `max_tokens = ClaudeConfiguration.batchMaxTokens` (8192), 4 ключі тіла (§7.2). Оцінка в підтвердженні: `K = ceil(N/10)`. 1 HTTP-запит на пакет, сервіс **не** повторює промт; обрізаний (`max_tokens`) пакет ділиться навпіл (як §8.4), обрізаний 1 елемент → елемент пропущено. Лічильників спроб/backoff немає (ручна дія): невдалий елемент лишається з тим самим `promptProfile` і буде взятий наступним запуском; виконані — ніколи. |
+| D35 | Помилки пакета | `.offline`, `.missingAPIKey`, `.unauthorized`, `.forbidden`, `.badRequest`, `.timeout`, `.rateLimited`, `.server`, `.transport`, `.storage` → **зупинка**, записи пакета без змін. `.invalidResponse` (не `max_tokens`), `.refused` → елементи пакета пропущені, наступний пакет; **2 такі пакети поспіль → зупинка** (захист токенів). Елемент `.invalid`/`.missing` → пропущено. Невалідний варіант при валідному верхньому рівні: en-джерело — англійські поля застосовуються, наявний варіант лишається як є; it-джерело — елемент пропущено (§7.7 п.3). Часткові успіхи зберігаються після **кожного** пакета. |
+| D36 | Бекап, час, конкурентність | Бекап `BackupManager.makeBackup(reason: .retranslate)` (префікс `dictionary-before-retranslate-`, 10 останніх) — один на запуск, у тому ж виклику актора безпосередньо перед **першим** записом (`beforeSave`, як replace-імпорт); запуск без записів — без бекапу; збій бекапу → зупинка `.storage(...)`, нічого не записано. `Entry.updatedAt = now` (це зміна змісту → D1-merge на іншому Mac забирає новий переклад разом з `promptProfile`, токени там не витрачаються). Запис, змінений під час запиту (`updatedAt` ≠ знімку), пропускається. `isRunning` → `alreadyRunning`; `AppModel` не запускає M7-доповнення під час перекладу і навпаки (кнопка `disabled`). |
+| D37 | Скасування | `cancel()` на акторі: прапорець перевіряється перед кожним HTTP-запитом (включно з половинами поділу); запит у польоті завершується й зберігається. Звіт `cancelled = true`. Повторний запуск продовжує лише неактуальні записи. |
+
+**Файли.** Ядро нові: `Claude/RetranslationLookup.swift`, `Claude/RetranslationPromptBuilder.swift`,
+`Claude/RetranslationResponseParser.swift`, `Processing/RetranslationProcessor.swift`; змінені: `Models/Entry.swift`,
+`Models/EntryDraft.swift`, `Languages/{LanguagePair,RenderingLanguage,EnglishUkrainian,Italian}.swift`,
+`Claude/{PromptBuilder,VariantPromptBuilder}.swift`, `Processing/{EntryProcessor,ProcessingTrigger}.swift`,
+`Repository/DictionaryRepository.swift`, `Storage/BackupManager.swift` (`.retranslate`), `Transfer/DictionaryImporter.swift`.
+App: `AppModel.swift`, `AppDelegate.swift`, `Views/SettingsView.swift`. Тести — у таблиці КП + `App/Tests/AppModelM8Tests.swift`.
+
+**Типи (ядро).** `Claude/RetranslationLookup.swift`: `RetranslationRequestItem { ref: Int; word: String; kind:
+SelectionKind; partOfSpeech: String?; keep: [String: String] }` (без `meaning` — щоб не прив'язувати модель до старого
+значення); `RetranslationItemOutcome { case ready(LookupResult), invalid(String), missing }` (`LookupResult.variants` —
+§7.7); `protocol RetranslationLookupService: Sendable { func retranslate(items:pair:) async throws -> [Int:
+RetranslationItemOutcome] }` + `extension ClaudeLookupService`. `Claude/RetranslationPromptBuilder.swift`:
+`buildBatch(items:pair:)` → system = `pair.prompt.batchSystem` + `rendering.prompt.batchVariantInstruction` кожної мови +
+`pair.prompt.domainInstruction`; user = `pair.prompt.batchUser` з `{{ITEMS}}` (компактний JSON як §7.7, `<` → `<`;
+елемент `{"id":1,"keep":{"it":"casa"},"pos":"noun","word":"house"}`). Нові поля з дефолтом `""`: `PromptTemplate.batchSystem`,
+`batchUser`; `RenderingPromptTemplate.batchVariantInstruction` (правила `variants.it` + «keep»). Відповідь — JSON-масив
+елементів форми §7.7 без `source_language`. `Claude/RetranslationResponseParser.swift`: як §7.7 (масив, `id` ціле/рядок,
+дубль — перший, верхній рівень за §7.4 з `kind`, варіанти — п.3).
+`Processing/RetranslationProcessor.swift` (actor): `init(repository:lookup:registry:backups: BackupManager, fileURL:,
+dateProvider:, batchSize: = 10, logger: RedactingLogger?)`; `plan(pairID:) -> RetranslationPlan { entries; requests }`;
+`run(pairID:, onProgress: @escaping @Sendable (RetranslationProgress) -> Void) async -> RetranslationReport`
+(`Progress { done, total, requests }` після кожного пакета; `Report { eligible, requests, updated, skipped, stoppedBy:
+ClaudeError?, cancelled, alreadyRunning, backupURL: URL? }`); `cancel()`. Репозиторій: `applyRetranslation(_ updates:
+[RetranslationUpdate], beforeSave: (@Sendable () throws -> Void)?) throws -> [Entry]` (один save на пакет; дублі не
+перевіряються — слово не змінюється). `ProcessingTrigger.retranslate`; `QueueLog.retranslateStarted(eligible:)` /
+`retranslateFinished(report:)` → `Retranslate finished: requests=3 updated=23 skipped=0 cancelled=false` (без слів).
+Імпорт: `promptProfile` — частина запису-переможця D1 (заміна цілком); при `skipped` локального лишається локальне;
+`DictionaryImporter` нормалізує порожній рядок → `nil`.
+
+**App.** `SettingsView` — секція «Переклади»: кнопка «Перекласти словник у контексті IT/QA» (`disabled`, якщо нема
+ключа, `plan.entries == 0` — підпис «Усі записи вже перекладено в контексті IT/QA», або триває доповнення) →
+`.confirmationDialog`/alert «Перекласти N записів? Буде надіслано приблизно K запитів до Claude. Перед змінами буде
+створено резервну копію в Backups.» [«Перекласти»] [«Скасувати»]; під час роботи — `ProgressView(value: done, total: N)`,
+«Перекладено X з N», кнопка «Зупинити» (→ «Зупиняється…»); після — «Оновлено X, пропущено Y, запитів Z» + `stoppedBy.userMessage`.
+`AppModel(…, retranslation: RetranslationProcessor? = nil)`: `refreshRetranslationPlan()`, `startRetranslation()`,
+`cancelRetranslation()`, `@Published retranslationPlan`, `isRetranslating`, `retranslationProgress`,
+`lastRetranslationReport`. `AppDelegate` створює процесор з тим самим `ClaudeLookupService` і `BackupManager`.
+
+**Міграція тестів.** `M7TestSupport.englishUkrainianSourceOnly` будує `PromptTemplate(system:userWord:userPhrase:)` з
+шаблонів en-uk (без `domainInstruction`/`batch*`) і `promptProfile: nil` → M2-тести й `testPairWithoutRenderingsPromptUnchanged`
+не змінюються. Два асерти `system == batchSystem` (`VariantPromptBuilderTests`, `VariantBackfillProcessorTests`) →
+`batchSystem + "\n\n" + domainInstruction`.
+
+| КП | Перевірка |
+|---|---|
+| M8.1 Інструкція IT/QA у всіх промтах, схеми без змін | `DomainPromptTests`: `testSinglePromptContainsITQAInstruction` (пара без renderings з `domainInstruction`), `testCombinedPromptContainsITQAInstructionOnce`, `testVariantBatchPromptContainsItalianITQAInstruction`, `testRetranslationPromptContainsITQAAndVariantRules`, `testUserTemplatesUnchanged`, `testDomainInstructionIsShort` (≤ 70 слів кожна), `testPairWithEmptyDomainInstructionPromptUnchanged` |
+| M8.2 Формат і сумісність `promptProfile` | `PromptProfileCodingTests`: `testM7FileLoadsAndSavesByteIdenticalWithoutProfile` (фікстура M7), `testProfileRoundTrip`, `testEmptyProfileNotEncoded`, `testNonStringProfileIgnoredEntryKept`, `testSchemaVersionStaysOne`, `testNewWordGetsCurrentProfile` (через `AddWordUseCase`), `testManualAddGetsCurrentProfile`, `testEditorUpdateKeepsProfile`, `testMergeTakesProfileFromD1Winner`, `testMergeSkippedKeepsLocalProfile` |
+| M8.3 Пакетний промт/розбір | `RetranslationPromptBuilderTests`: `testItemsCompactWithKeepForItalianSource`, `testNoMeaningSent`; `RetranslationParserTests`: `testAllValidWithVariants`, `testInvalidVariantEnglishSourceKeepsTopLevel`, `testInvalidVariantItalianSourceInvalidatesItem`, `testMissingIdsReportedMissing`, `testCodeFenceStripped` |
+| M8.4 Кількість запитів і відновлення (через `ClaudeLookupService` + `MockURLProtocol`) | `RetranslationProcessorTests`: `testPlan23EntriesThreeRequests`, `testRetranslate23EntriesMakesThreeRequests` (10/10/3), `testSecondRunMakesZeroRequests`, `testInterruptedRunResumesOnlyRemaining` (offline на 2-му пакеті → 2-й запуск: 2 запити, лише 13 записів, у запитах нема перших 10), `testCancelStopsBeforeNextRequest`, `testTruncatedBatchSplitsNeverRepeatsPrompt` (10 → 5+5, рівно 3 запити, тексти різні), `testTruncatedSingleItemSkipped`, `testTwoConsecutiveInvalidBatchesStop`, `testPartialSuccessPersistedAfterEachBatch`, `testOnlyReadyEntriesOfPairEligible`, `testUsesMaxTokens8192AndFourBodyKeys` |
+| M8.5 Дані запису | `RetranslationProcessorTests`: `testUserEnglishWordPreserved` (модель повертає інше `word`), `testItalianSourceWordPreserved` (`keep` у запиті; `variants.it.word` = «casa»), `testFieldsAndVariantUpdatedProfileSet`, `testUpdatedAtSetToNow`, `testEntryEditedDuringRequestSkipped`, `testBackupCreatedOnceBeforeFirstWrite` (3 пакети → 1 файл `dictionary-before-retranslate-*`), `testNoBackupWhenNothingWritten`, `testBackupFailureStopsWithoutWrites`, `testConcurrentRunReportsAlreadyRunning`, `testLogContainsNoWords` |
+| M8.6 Застосунок | `AppModelM8Tests` (стаб `RetranslationLookupService` з лічильником): `testPlanShowsEntriesAndRequests` (23 → N=23, K=3), `testPlanZeroDisablesAction`, `testStartPublishesProgressAndReport`, `testCancelStopsAfterCurrentBatch`, `testRetranslationDisabledWithoutAPIKey`, `testBackfillNotStartedWhileRetranslating` + ⏳ manual |
+| M8.7 Документація | Judge: `README.md` (розділ «IT/QA-контекст»: завжди увімкнено, кнопка, `ceil(N/10)` запитів, бекап, повторний запуск = 0); `docs/manual-tests/M8.md` |
+
+`M8.md` (реальний Mac, `sw_vers`, реальний ключ): **A. Нові слова** через Services: `flaky`, `regression`, `smoke`,
+`build`, `release`, `issue`, `merge`, `deploy` + нетехнічне (`apple`) — IT/QA-переклад першим (напр. `flaky` →
+«нестабільний», `smoke` → «димовий (тест)»), приклад про тести/CI/релізи; для `apple` — побутовий; те саме в режимі IT;
+рівно 1 запит на слово. **B. Переклад словника** — ≥ 25 старих записів (включно з італійським виділенням): діалог з N і K;
+у Backups з'явився `dictionary-before-retranslate-*`; прогрес; у Console `requests=K`; слова користувача (і `casa`) не
+змінилися; у `dictionary.json` `"promptProfile": "it-qa-1"`. **C. Повторний запуск** — кнопка неактивна / 0 запитів.
+**D. Переривання** — «Зупинити» або вимкнути Wi-Fi посеред → повторний запуск бере лише решту. **E. Інший Mac** —
+імпорт (merge) експорту → переклади оновлено, кнопка показує 0. Якість IT/QA-перекладів моделі — U19 (записати приклади).
 
 ---
 
