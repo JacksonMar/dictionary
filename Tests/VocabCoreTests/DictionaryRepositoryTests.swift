@@ -9,6 +9,7 @@ final class DictionaryRepositoryTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        pinInterfaceLanguage(.uk)
         fixture = try StoreFixture()
         repository = DictionaryRepository(store: fixture.store, dateProvider: fixture.dateProvider)
         _ = try await repository.load()

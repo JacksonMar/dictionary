@@ -90,6 +90,7 @@ final class ServicesProviderTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        pinInterfaceLanguage(.uk)
         let board = NSPasteboard(name: NSPasteboard.Name("test-\(UUID().uuidString)"))
         board.clearContents()
         pasteboard = board

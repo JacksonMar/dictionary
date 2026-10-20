@@ -50,6 +50,11 @@ private final class FakeSpeech: SpeechSpeaking {
 
 /// M5 — `AppModel`: тумблер автозапуску (з заглушкою), озвучення (мова пари), `visibleEntries` (пошук/сортування).
 final class AppModelM5Tests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     private static let reference = Date(timeIntervalSince1970: 1_791_885_600)
 
     @MainActor

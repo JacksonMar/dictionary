@@ -10,6 +10,7 @@ final class VariantBackfillProcessorTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        pinInterfaceLanguage(.uk)
         MockURLProtocol.reset()
     }
 

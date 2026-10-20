@@ -4,6 +4,11 @@ import XCTest
 
 /// M4.1 — валідація файлу імпорту (§10, D13): помилки рівня файлу й пропуск окремих невалідних записів.
 final class DictionaryImporterTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     // MARK: - Валідний файл
 
     func testValidFileParsed() throws {

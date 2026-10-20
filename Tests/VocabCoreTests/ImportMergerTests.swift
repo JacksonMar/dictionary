@@ -4,6 +4,11 @@ import XCTest
 
 /// M4.2 — merge з конфліктами за `updatedAt` (§10, D1). Чисті функції `ImportMerger`.
 final class ImportMergerTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     func testNewEntriesAdded() {
         let local = [M4.entry(word: "run")]
         let imported = [M4.entry(word: "walk"), M4.entry(word: "give up")]

@@ -4,6 +4,11 @@ import XCTest
 
 /// M6.2 — пагінація (чиста логіка, сторінки з 1).
 final class PaginationTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     /// `count` записів зі словами `w1…wN` у заданому порядку.
     private func entries(_ count: Int) -> [Entry] {
         (1...max(count, 1)).prefix(count).map { index in

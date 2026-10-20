@@ -10,6 +10,7 @@ final class DictionaryTransferServiceTests: XCTestCase {
     private var localEntries: [Entry] = []
 
     override func setUpWithError() throws {
+        pinInterfaceLanguage(.uk)
         fixture = try TransferFixture()
         localEntries = [
             M4.entry(word: "run", updated: 10),

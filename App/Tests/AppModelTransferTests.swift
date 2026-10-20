@@ -24,6 +24,11 @@ private final class FakeFilePanels: FilePanelPresenting {
 /// M4.6 — інтеграція експорту/імпорту в `AppModel`: панелі, вибір режиму, підтвердження заміни, звіт, помилки.
 /// Усі файли — у тимчасовому каталозі; реальний `~/Library/Application Support/VocabApp` не використовується.
 final class AppModelTransferTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     private struct Harness {
         let model: AppModel
         let panels: FakeFilePanels

@@ -9,6 +9,7 @@ final class SettingsStoreTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        pinInterfaceLanguage(.uk)
         suiteName = "com.vocabapp.tests.\(UUID().uuidString)"
         defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
     }
@@ -195,9 +196,70 @@ final class SettingsStoreTests: XCTestCase {
         store.displayLanguageID = "it"
         XCTAssertEqual(store.displayLanguageID, "it")
     }
+
+    // MARK: - M9.4 Мова інтерфейсу
+
+    func testInterfaceLanguageDefaultsToEnglish() {
+        XCTAssertNil(defaults.object(forKey: "interfaceLanguage"))
+        XCTAssertEqual(UserDefaultsSettingsStore.interfaceLanguageKey, "interfaceLanguage")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).interfaceLanguage, .en)
+        XCTAssertEqual(InMemorySettingsStore().interfaceLanguage, .en)
+    }
+
+    func testInterfaceLanguagePersistsInUserDefaults() {
+        let store = UserDefaultsSettingsStore(defaults: defaults)
+        store.interfaceLanguage = .uk
+
+        XCTAssertEqual(store.interfaceLanguage, .uk)
+        XCTAssertEqual(defaults.string(forKey: "interfaceLanguage"), "uk")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).interfaceLanguage, .uk,
+                       "new instance over same suite sees the value")
+
+        store.interfaceLanguage = .en
+        XCTAssertEqual(defaults.string(forKey: "interfaceLanguage"), "en")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).interfaceLanguage, .en)
+    }
+
+    func testUnknownInterfaceLanguageFallsBackToEnglish() {
+        for raw in ["xx", "", "   ", "de", "ukrainian"] {
+            defaults.set(raw, forKey: "interfaceLanguage")
+            XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).interfaceLanguage, .en, "stored \(raw)")
+        }
+        defaults.set(" UK ", forKey: "interfaceLanguage")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).interfaceLanguage, .uk,
+                       "stored value is trimmed and case-insensitive")
+        defaults.set(42, forKey: "interfaceLanguage")
+        XCTAssertEqual(UserDefaultsSettingsStore(defaults: defaults).interfaceLanguage, .en, "non-string value")
+    }
+
+    func testInMemoryInterfaceLanguage() {
+        let store = InMemorySettingsStore()
+        XCTAssertEqual(store.interfaceLanguage, .en)
+        store.interfaceLanguage = .uk
+        XCTAssertEqual(store.interfaceLanguage, .uk)
+        XCTAssertEqual(InMemorySettingsStore(interfaceLanguage: .uk).interfaceLanguage, .uk)
+    }
+
+    func testSettingsStoreProtocolDefaultInterfaceLanguageIsEnglishAndIgnoresWrites() {
+        final class MinimalStore: SettingsStore, @unchecked Sendable {
+            var model = ""
+            var languagePairID = ""
+            var appearance = AppAppearance.system
+            var pageSize = 50
+        }
+        let store = MinimalStore()
+        XCTAssertEqual(store.interfaceLanguage, .en)
+        store.interfaceLanguage = .uk
+        XCTAssertEqual(store.interfaceLanguage, .en)
+    }
 }
 
 final class InMemorySecretStoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     func testWriteReadDelete() throws {
         let store = InMemorySecretStore()
 

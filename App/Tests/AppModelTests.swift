@@ -5,6 +5,11 @@ import VocabCore
 /// M1.7 — AppModel: ручне додавання/редагування/видалення через репозиторій у тимчасовому каталозі.
 /// Реальний `~/Library/Application Support/VocabApp` не використовується.
 final class AppModelTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     private struct Harness {
         let model: AppModel
         let paths: AppPaths

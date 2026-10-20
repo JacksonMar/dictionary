@@ -10,6 +10,7 @@ import XCTest
 final class ClaudeLookupServiceTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        pinInterfaceLanguage(.uk)
         MockURLProtocol.reset()
     }
 

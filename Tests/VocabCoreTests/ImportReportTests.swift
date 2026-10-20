@@ -4,6 +4,11 @@ import XCTest
 
 /// M4.5 — текст звіту імпорту.
 final class ImportReportTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     func testSummaryText() {
         let report = ImportReport(added: 2, updated: 1, skipped: 3)
         XCTAssertEqual(report.summary, "Додано 2, оновлено 1, пропущено 3")

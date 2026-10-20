@@ -5,6 +5,11 @@ import XCTest
 /// M3.2 — `ServiceRequestHandler` поверх реального `AddWordUseCase`, репозиторію в тимчасовому каталозі,
 /// черги і `StubLookupService` (без мережі): додавання, дубль, офлайн, помилки, відхилення, D17.
 final class ServiceRequestHandlerTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     private var harness: QueueHarness?
 
     override func tearDown() {

@@ -9,6 +9,7 @@ final class TokenEconomyTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
+        pinInterfaceLanguage(.uk)
         MockURLProtocol.reset()
         stack = try await M7Stack.make()
     }

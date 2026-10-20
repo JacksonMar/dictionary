@@ -17,6 +17,7 @@ final class M2ReviewRegressionTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        pinInterfaceLanguage(.uk)
         MockURLProtocol.reset()
     }
 

@@ -9,6 +9,7 @@ final class CrossLanguageDedupTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        pinInterfaceLanguage(.uk)
         MockURLProtocol.reset()
     }
 

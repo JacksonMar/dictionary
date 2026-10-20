@@ -70,6 +70,11 @@ final class RetryPolicyTests: XCTestCase {
 
 /// M2.7 — PendingQueueProcessor + EntryProcessor зі stub-lookup і керованим часом.
 final class PendingQueueProcessorTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     private var harness: QueueHarness?
 
     override func tearDown() {

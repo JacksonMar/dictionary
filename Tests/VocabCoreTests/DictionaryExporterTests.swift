@@ -9,6 +9,7 @@ final class DictionaryExporterTests: XCTestCase {
     private var sampleEntries: [Entry] = []
 
     override func setUpWithError() throws {
+        pinInterfaceLanguage(.uk)
         fixture = try TransferFixture()
         sampleEntries = Self.makeSampleEntries()
     }

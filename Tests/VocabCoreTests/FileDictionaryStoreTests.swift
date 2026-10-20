@@ -8,6 +8,7 @@ final class FileDictionaryStoreTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        pinInterfaceLanguage(.uk)
         fixture = try StoreFixture()
     }
 

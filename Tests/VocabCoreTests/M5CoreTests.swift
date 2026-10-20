@@ -5,6 +5,11 @@ import XCTest
 /// M5 — зміни ядра поза `EntryQuery`: `ClaudeError.storage`, тексти помилок файлів/імпорту, очищення імпорту,
 /// кількість у `exportDictionary`.
 final class M5CoreTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     // MARK: - ClaudeError.storage disposition (§8.1: як .transport)
 
     func testStorageDispositionBehavesLikeTransport() {

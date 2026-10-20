@@ -4,6 +4,11 @@ import XCTest
 
 /// M3.3 — тексти сповіщень (§9, D17).
 final class NotificationTextTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        pinInterfaceLanguage(.uk)
+    }
+
     private func entry(
         _ word: String = "run",
         translations: [String] = ["бігти", "керувати"],

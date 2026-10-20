@@ -224,3 +224,14 @@ func jsonObject(_ data: Data) throws -> [String: Any] {
     }
     return dictionary
 }
+
+extension XCTestCase {
+    /// M9 (D39): фіксує мову інтерфейсу для набору, що перевіряє тексти певною мовою.
+    /// Викликати в `setUp`; після тесту мова повертається до `.en` (значення за замовчуванням).
+    func pinInterfaceLanguage(_ language: AppLanguage) {
+        L10n.setCurrent(language)
+        addTeardownBlock {
+            L10n.setCurrent(.en)
+        }
+    }
+}
