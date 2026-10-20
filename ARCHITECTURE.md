@@ -1167,6 +1167,10 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
   і якість італійської IPA. Фіксується в M7.md D.
 - **U19** (M8, якість моделі) Чи модель стабільно ставить IT/QA-значення першим і не «притягує» технічний контекст
   до нетехнічних слів. Фіксується в M8.md.
+- **U20** (M9) Вплив `AppleLanguages` у домені застосунку на системні рядки та надійність перезапуску через
+  `/bin/sh` + `open` — деталі в M9.
+- **U21** (M9) Кеш `pbs` для `ServicesMenu.strings` і збереження увімкнення/шорткату служби після зміни
+  `NSMenuItem.default` — деталі в M9.
 
 ---
 
@@ -1300,7 +1304,7 @@ README-інструкції відтворювані на чистому кор�
 
 ### M6 — Фідбек з ручного тестування
 
-Джерело: `docs/reports/2026-10-14-mac-test-report.md` (§6 P1–P5, §7 UX-побажання). Модель даних і формат файлу не змінюються.
+Джерело: ручне тестування на Mac 2026-10-14 (§6 P1–P5, §7 UX-побажання). Модель даних і формат файлу не змінюються.
 
 **Файли.** Ядро: `Repository/Pagination.swift` (§6), `Settings/AppAppearance.swift` + нові поля в `Settings/SettingsStore.swift` (§7.6),
 `Processing/ProcessingTrigger.swift` (§8.3). App: `Views/EntryTableView.swift` (новий; `EntryRowView.swift` видалити — XcodeGen збирає джерела з каталогу `App/Sources`, тож після `xcodegen generate` файл зникає з проєкту автоматично, правити `project.yml` не треба),
@@ -1430,6 +1434,61 @@ HTTP-шар, а не стаб; `FixedDateProvider`; тимчасовий кат�
 приклад; те саме в режимі IT (італійський варіант); рівно 1 запит на слово. **B. Старі записи** — записи, додані до M8,
 після перезапуску й перемикання EN/IT не змінилися (переклади, приклади, `updatedAt` у `dictionary.json`), нових запитів
 для них немає. Якість — U19 (записати приклади).
+
+### M9 — Інтерфейс англійською та українською + README EN/UK
+
+Джерело: запит користувача 2026-10-20. Рішення користувача: мови UI — англійська (**за замовчуванням**) і українська;
+вибір у Settings («Interface language / Мова інтерфейсу»), застосовується **після перезапуску** (кнопка «Restart now»).
+Вміст словника (переклади українською), промти, модель даних і формат файлу **не** змінюються.
+
+| # | Питання | Рішення |
+|---|---|---|
+| D32 | Механізм локалізації | Чистий Swift у ядрі, без `Bundle.module`/`.strings` (ресурси SwiftPM на Linux — ризик, D-тести мають іти в Docker). `Sources/VocabCore/Localization/`: `AppLanguage.swift` — `public enum AppLanguage: String, CaseIterable, Sendable { case en, uk }`, `static let default = .en`, `init(storedValue: String?)` (невідоме/nil → `.en`), `nativeName` («English», «Українська» — автоніми, не ключі); `L10nKey.swift` — `public enum L10nKey: String, CaseIterable, Sendable` (rawValue — крапковий id, напр. `"notification.added.body"`); `L10nEnglish.swift`/`L10nUkrainian.swift` — `static func text(_ key: L10nKey) -> String` з **вичерпним `switch`** (повнота й відсутність дублікатів — на етапі компіляції); `L10n.swift` — `public enum L10n { static var current: AppLanguage { get }; static func setCurrent(_:); static func text(_ key: L10nKey, _ args: [String: String] = [:], language: AppLanguage = L10n.current) -> String }`. `current` — під `NSLock` (читається з фонових черг), стартове значення `.en`. Плейсхолдери — іменовані `{word}`, `{count}`…; підстановка за один прохід (значення не скануються повторно, тож `{x}` у слові користувача безпечне); відсутній аргумент лишає токен як є. Множини не підтримуються: тексти сформульовано як «мітка: N». |
+| D33 | Один механізм для ядра й App | **Так**: усі рядки App (views, `AppModel`, `AppDelegate`, `ServicesProvider`, `FilePanels`, `RenderingLanguageTexts`, `WindowTitle`, `MenuBarExtra`, `EntrySort`-підписи) — ключі тієї ж таблиці (групи `app.*`, `settings.*`, `table.*`…). String Catalog не використовується. SwiftUI: лише `Text(L10n.text(.x))`/`Button(L10n.text(.x))` (перевантаження `StringProtocol`, без пошуку в `Localizable.strings`); літерал з текстом для користувача в `App/Sources` заборонено. `WindowTitle.dictionary/settings` стають `static var` → `L10n.text(...)` (U12-закриття вікон за заголовком працює, бо мова незмінна протягом запуску). |
+| D34 | API ядра | Наявні текстові властивості/функції зберігають імена й читають `L10n.current`; поруч — явна мова для тестів: `NotificationText.make(for:selection:language:)`, `NotificationText.rejectionText(_:language:)`, `ClaudeError.userMessage(in:)`, `StorageError/RepositoryError/ImportError/SecretStoreError.userMessage(in:)`, `FileErrorText.describe(_:language:)`, `ImportReport.summary(in:)`, `label(in:)` сторінки `Pagination`, `AppAppearance.title(in:)`, `EntrySort.title(in:)` (нове, з App у ядро). Через `L10n` ідуть і причини `ClaudeError.invalidResponse`/`transport` з парсерів (`claude.parse.*`), `EntryProcessor`/`VariantBackfillProcessor` (`lastError`), `ImportMerger`/`DictionaryImporter` (причини пропуску). **Не** локалізуються: промти й приклади в `Languages/*`, `PromptBuilder.retrySuffix`, `message` з HTTP-відповіді, системні `localizedDescription` (вони й так ідуть мовою `AppleLanguages`, D36). |
+| D35 | Уже збережені тексти | `Entry.lastError`/`variant.lastError` у `dictionary.json` лишаються мовою моменту запису (дані, не UI); перезаписуються при наступній спробі. Міграції немає. |
+| D36 | Налаштування й застосування | `SettingsStore.interfaceLanguage: AppLanguage { get set }` (ключ `UserDefaults` `"interfaceLanguage"`, `rawValue`; default-реалізація в extension протоколу → `.en`, запис ігнорується; `InMemorySettingsStore(…, interfaceLanguage: .en)`). Старт: `VocabApp.init()` (до побудови сцен) викликає `InterfaceLanguageBootstrap.apply(settings:writer:)` → `L10n.setCurrent(settings.interfaceLanguage)` і синхронізує `AppleLanguages` = `[code]` у домені застосунку, якщо відрізняється; під XCTest — `.en` і без запису. Ефект: системні рядки (NSOpenPanel, стандартні кнопки) теж ідуть обраною мовою після перезапуску (U20). Наявні користувачі після оновлення побачать англійський UI (default) — зазначити в README. |
+| D37 | Settings і перезапуск | Секція «Interface language / Мова інтерфейсу» (двомовна мітка — константа `AppLanguage.pickerLabel`), `Picker` по `AppLanguage.allCases` з `nativeName`. `AppModel`: `let runningInterfaceLanguage` (= `L10n.current` при ініціалізації), `@Published interfaceLanguageSelection`, `var interfaceLanguageNeedsRestart: Bool` (selection ≠ running), `setInterfaceLanguage(_:)` (settings + `PreferredLanguagesWriting.setAppleLanguages([code])`), `restartToApplyLanguage()`. Коли `needsRestart` — текст «Takes effect after restart» і кнопка «Restart now». App-протоколи: `PreferredLanguagesWriting` (реальний — `UserDefaults.standard.set(codes, forKey: "AppleLanguages")`; тести — запис у пам'ять), `AppRelaunching { func relaunch() throws }`. `ProcessAppRelauncher`: `Process` з `/bin/sh -c 'while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; /usr/bin/open "$2"' sh <pid> <Bundle.main.bundlePath>`, потім `NSApp.terminate(nil)` (звичайний шлях виходу; новий екземпляр стартує лише після завершення старого — без двох власників `NSPortName`). Аргументи будує чиста `static func arguments(pid:bundlePath:) -> [String]`. Помилка `run()` → `settingsError` = `settings.restart.failed` («quit and open VocabApp manually»). |
+| D38 | Services-меню | `NSMenuItem.default` = `"Add to Dictionary"`; `App/Resources/en.lproj/ServicesMenu.strings` (`"Add to Dictionary" = "Add to Dictionary";`) і `uk.lproj/ServicesMenu.strings` (`… = "Додати в словник";`). Info.plist: `CFBundleDevelopmentRegion = en`, `CFBundleLocalizations = [en, uk]`. `project.yml`: `App/Resources` уже в `sources` — `*.lproj` стають variant group; за потреби `options.developmentLanguage: en`. **Обмеження**: назва в меню Services іде за мовою **системи**, не за налаштуванням застосунку (U21); зміна назви може скинути увімкнення/шорткат служби в Keyboard → Shortcuts → Services — у README й M9.md. |
+| D39 | Міграція наявних тестів | Очікувані українські рядки **не** переписуються: набори, що перевіряють український текст, фіксують мову явно — хелпер `pinInterfaceLanguage(_:)` у `TestSupport.swift` (і копія в App/Tests): `L10n.setCurrent(.uk)` + `addTeardownBlock { L10n.setCurrent(.en) }`, або явний `language: .uk`. Ядро (за grep кирилиці в асертах): `NotificationTextTests`, `ServiceRequestHandlerTests`, `AddWordUseCaseTests`, `M2ReviewRegressionTests`, `M5CoreTests`, `PendingQueueProcessorTests`, `VariantBackfillProcessorTests`, `DictionaryRepositoryTests`, `FileDictionaryStoreTests`, `DictionaryImporterTests`, `ImportMergerTests`, `ImportReportTests`, `DictionaryTransferServiceTests`, `VariantImportMergeTests`, `PaginationTests`, `LookupResponseParserTests`, `CombinedLookupParserTests`, `TokenEconomyTests`, `SettingsStoreTests` (лише асерти тем). App: `AppModelTests`, `AppModelM5Tests`, `AppModelM7Tests`, `AppModelTransferTests`, `ServicesProviderTests`; `InfoPlistServicesTests.testNSServicesEntry` → `"Add to Dictionary"`. Асерти даних (переклади «бігти» тощо) не чіпаються. Developer звіряє список з фактичними падіннями. |
+| D40 | README | `README.md` (англ.) і `README.uk.md` (укр.), однакова структура; перший рядок — перемикач `**English** · [Українська](README.uk.md)` / `[English](README.md) · **Українська**`. Розділи: опис і можливості; **Requirements** (macOS 13+; повний Xcode 15+ — Command Line Tools недостатньо, `xcodebuild` потребує Xcode, `sudo xcode-select -s /Applications/Xcode.app`; Homebrew; XcodeGen; API-ключ Anthropic); **Install** і **Update** — лише блоки команд для копіювання (без скрипта): `brew install xcodegen`, `git clone`, `xcodegen generate`, `xcodebuild … -configuration Release -derivedDataPath build build`, `osascript -e 'quit app "VocabApp"'`, `ditto build/Build/Products/Release/VocabApp.app /Applications/VocabApp.app` (після видалення лише старого бандла), `open /Applications/VocabApp.app`, `/System/Library/CoreServices/pbs -update`; Update = `git pull` + ті самі кроки. Явно: оновлення не чіпає `~/Library/Application Support/VocabApp` і ключ у Keychain (можливий запит доступу після перезбірки — «Always Allow», U9). Також: перший запуск (ключ, увімкнення служби), мова інтерфейсу (D37, обмеження D38), IT/QA-контекст (M8), дані й приватність, видалення, усунення несправностей. Наявний зміст `README.md` переноситься в `README.uk.md`. |
+
+**Файли.** Ядро: нові `Localization/{AppLanguage,L10nKey,L10n,L10nEnglish,L10nUkrainian}.swift`; змінені
+`UseCases/NotificationText.swift`, `Claude/{ClaudeError,ClaudeRequestBuilder,ClaudeLookupService,LookupResponseParser,
+VariantBatchResponseParser}.swift`, `Storage/StorageError.swift`, `Repository/{RepositoryError,Pagination,EntryQuery}.swift`,
+`Transfer/{ImportError,ImportReport,ImportMerger,DictionaryImporter}.swift`, `Support/FileErrorText.swift`,
+`Security/SecretStore.swift`, `Settings/{AppAppearance,SettingsStore}.swift`, `Processing/{EntryProcessor,
+VariantBackfillProcessor}.swift`. App: усі `Views/*`, `AppModel.swift`, `AppDelegate.swift`, `AppEnvironment.swift`,
+`VocabApp.swift`, `Platform/{ServicesProvider,FilePanels}.swift`, нові `Platform/{AppRelauncher,PreferredLanguagesWriter,
+InterfaceLanguageBootstrap}.swift`, `App/Resources/{en,uk}.lproj/ServicesMenu.strings`, `App/Info.plist`, `project.yml`.
+Документи: `README.md`, `README.uk.md`, `docs/manual-tests/M9.md`.
+
+| КП | Перевірка |
+|---|---|
+| M9.1 Таблиці повні й узгоджені | `Tests/VocabCoreTests/LocalizationTests.swift`: `testEveryKeyHasNonEmptyTextInAllLanguages` (усі `L10nKey.allCases` × `AppLanguage.allCases`, непорожні після trim), `testPlaceholdersMatchAcrossLanguages` (множини `{name}` en == uk для кожного ключа), `testEnglishTableHasNoCyrillic`, `testDefaultLanguageIsEnglish` (`AppLanguage.default`, `L10n.current` до `setCurrent`, `AppLanguage(storedValue: nil/"xx")`), `testSetCurrentSwitchesDefaultLanguage`, `testFormatSubstitutesNamedPlaceholdersSinglePass`, `testMissingArgumentLeavesToken` |
+| M9.2 Жодного жорстко закодованого тексту | `Tests/VocabCoreTests/HardcodedStringsScanTests.swift`: `testNoCyrillicStringLiteralsOutsideLocalizationTables` — сканує `Sources/VocabCore/**` і `App/Sources/**` (шлях від `#filePath`) на рядкові літерали з кирилицею в некоментованих рядках; виключення: `Localization/`, `Languages/`, `PromptBuilder.swift` |
+| M9.3 Тексти ядра обома мовами | `LocalizedMessagesTests.swift`: `testNotificationTextsEnglish`, `testNotificationTextsUkrainian` (added/duplicate/queued×reasons/failed/rejected×4), `testClaudeErrorMessagesBothLanguages` (усі кейси, en ≠ uk), `testStorageRepositoryImportErrorMessagesBothLanguages`, `testFileErrorTextBothLanguages`, `testImportReportSummaryBothLanguages` (en: «Added 3, updated 1, skipped 0»), `testPaginationLabelBothLanguages`, `testAppearanceAndSortTitlesBothLanguages`, `testUkrainianTextsUnchangedFromM8` (вибірка: «Додано», «Вже є в словнику», «Сторінка 2 з 5») |
+| M9.4 Налаштування | `SettingsStoreTests`: `testInterfaceLanguageDefaultsToEnglish`, `testInterfaceLanguagePersistsInUserDefaults` (окремий suite), `testUnknownInterfaceLanguageFallsBackToEnglish`, `testInMemoryInterfaceLanguage` |
+| M9.5 App: Info.plist і перезапуск | `App/Tests/InterfaceLanguageTests.swift`: `testInfoPlistDeclaresLocalizations` (`CFBundleDevelopmentRegion == "en"`, `CFBundleLocalizations` ⊇ {en, uk}, `Bundle.main.localizations`), `testServicesMenuStringsForBothLocalizations` (`path(forResource:"ServicesMenu", ofType:"strings", inDirectory:nil, forLocalization:)` + `NSDictionary(contentsOf:)["Add to Dictionary"]`), `testSelectingLanguagePersistsAndWritesAppleLanguages`, `testRestartNeededOnlyWhenSelectionDiffers`, `testRestartNowInvokesRelauncher` (фейковий `AppRelaunching`), `testRelaunchFailureShowsSettingsError`, `testRelauncherArgumentsWaitForPidThenOpenBundle`, `testRenderingLanguageTextsBothLanguages`, `testWindowTitlesFollowCurrentLanguage`; оновлений `InfoPlistServicesTests.testNSServicesEntry` |
+| M9.6 Документація | Judge: `README.md`/`README.uk.md` (перемикач, Requirements, лише команди, Update без даних/ключа), `M9.md` |
+
+`M9.md` (реальний Mac, `sw_vers`, мова системи): **A.** Чиста установка за README.md (copy-paste) → UI англійською.
+**B.** Settings → «Українська» → з'являються «Takes effect after restart» і «Restart now» → застосунок завершується й
+сам перезапускається (один екземпляр у Activity Monitor) → menu bar, вікна, таблиця, редактор, алерти, діалоги
+імпорту/експорту (включно з кнопками NSOpenPanel), сповіщення Services і помилки (без ключа, офлайн) — українською;
+назад на English — те саме англійською. **C.** Вибір мови без перезапуску → Quit → ручний запуск → мова застосована.
+**D.** Меню Services: при системній мові English — «Add to Dictionary», при українській — «Додати в словник» (після
+`pbs -update`/перелогіну); служба лишилася увімкненою (інакше — записати, U21). **E.** Оновлення за README на машині
+з даними M8: `shasum dictionary.json` до/після однаковий, ключ працює без повторного введення, переклади українською
+не змінились. **F.** Записати поведінку U20/U21.
+
+**Невизначеності (у §13 і `PROGRESS.md`).**
+- **U20** (M9) Чи `AppleLanguages` у домені застосунку (`UserDefaults.standard`) впливає на системні рядки SwiftUI/AppKit
+  і `Bundle.preferredLocalizations` після перезапуску ad-hoc застосунку; чи надійний перезапуск через `/bin/sh` + `open`
+  (альтернатива — `NSWorkspace.openApplication(at:configuration:)` після завершення; не перевірено). Наш UI від цього не
+  залежить (`L10n.current`).
+- **U21** (M9) Чи `ServicesMenu.strings` підхоплюється без перелогіну (кеш `pbs`), і чи зберігається стан увімкнення /
+  шорткат служби після зміни `NSMenuItem.default` з «Додати в словник» на «Add to Dictionary».
 
 ---
 
