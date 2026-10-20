@@ -12,12 +12,13 @@
 | M6 — Фідбек з ручного тестування | done (⏳ Mac) | 1 | PASS умовний — рев'ю коду + Linux; macOS-збірку/тести підтвердить користувач |
 | M7 — Італійська версія (EN \| IT) | done (⏳ Mac) | 1 | PASS умовний — план з ітерації 2; код: Linux 498 тестів, рев'ю; macOS — користувач |
 | M8 — IT/QA-контекст перекладів | done | 1 | PASS — лише промпти; Linux 508 тестів; App/ без змін |
+| M9 — Інтерфейс EN/UK | done (⏳ Mac) | 1 | PASS умовний — Linux 542 тести; macOS: 113 App-тестів очікується |
 
 ## Середовище перевірки
 
 - Розробка ведеться в Linux-контейнері (немає Xcode). Ядро (`VocabCore`, лише Foundation) збирається й тестується локально: Docker-образ `swift:6.0-noble`, `swift test`.
 - macOS-збірка й тести (`xcodegen` → `xcodebuild build` → `xcodebuild test`) запускаються в GitHub Actions (`.github/workflows/ci.yml`, раннер `macos-15`). Judge спирається на результат CI.
-- Ручні перевірки (Services у Safari/Chrome/TextEdit, сповіщення, автозапуск, озвучення) можливі лише на реальному Mac: див. `docs/manual-tests/`.
+- Ручні перевірки (Services у Safari/Chrome/TextEdit, сповіщення, автозапуск, озвучення) можливі лише на реальному Mac: див. `docs/development/manual-tests/`.
 
 ## Вердикти Judge
 
@@ -31,32 +32,32 @@
 
 ### M1 — ітерація 1: PASS
 - Linux: 71 тест ядра, 0 падінь. macOS CI (run 38423702609): `swift test` ✅, `xcodegen` + `xcodebuild build` ✅, `xcodebuild test` ✅ (8 тестів застосунку).
-- Неблокуючі зауваження: гонка check-then-act у `AtomicFileWriter` при першому записі (виправити в M2); CI-кроки з `if: hashFiles` (прибрано); назви CI jobs в ARCHITECTURE.md (виправлено); ручний чекліст `docs/manual-tests/M1.md` — ⏳ виконати на Mac.
+- Неблокуючі зауваження: гонка check-then-act у `AtomicFileWriter` при першому записі (виправити в M2); CI-кроки з `if: hashFiles` (прибрано); назви CI jobs в ARCHITECTURE.md (виправлено); ручний чекліст `docs/development/manual-tests/M1.md` — ⏳ виконати на Mac.
 
 ### M2 — ітерація 1: PASS
 - Linux: 178 тестів ядра, 0 падінь. macOS CI (run 38426913778): `xcodebuild build` ✅, `xcodebuild test` ✅ (15 тестів, зокрема Keychain на реальному Keychain раннера).
 - Відхилення, прийняті Judge: ручне додавання — форма (`ready`) + окрема кнопка «Заповнити через Claude» (D14); невідома мовна пара → `failed` з «Невідома мовна пара»; відсутня `lemma` → `word`.
 - Неблокуючі зауваження (виправити в M3): редагування збереженого ключа в тексті серверної помилки (не лише шаблон `sk-ant-`); `APIKeyCache` замінює старий ключ; `EntryProcessor.store` ковтає помилку запису; немає кнопки «Повторити всі»; помилка запису рахує спробу, але запис ніколи не стає `failed`.
-- ⏳ `docs/manual-tests/M2.md` — виконати на Mac зі справжнім ключем.
+- ⏳ `docs/development/manual-tests/M2.md` — виконати на Mac зі справжнім ключем.
 
 ### M3 — ітерація 1: PASS
 - Tester виявив гонку подвійної обробки запису (`processAll` vs `retry`) → Developer виправив (атомарні check+insert у `processOne`) до рев'ю Judge.
 - Linux: 223 тести, 0 падінь (QueueConcurrencyTests стабільний у 8 прогонах). macOS CI (run 38430377167): `xcodebuild build` ✅, `xcodebuild test` ✅ (33 тести, зокрема ServicesProviderTests 9, InfoPlistServicesTests 4), `swift test` на macOS ✅.
 - U3 (бриджинг сигнатури Services-методу) закрито: селектор компілюється, `responds(to:)` = true.
 - Неблокуючі зауваження (на M5): дубльований запит дозволу на сповіщення; `NotificationService` без анотацій конкурентності; текст «Services недоступні» поза §9; помилка запису показується як «Помилка мережі»; якщо холодний старт через Services не спрацює (U5) — реєструвати провайдер у `applicationWillFinishLaunching`.
-- ⏳ `docs/manual-tests/M3.md` — перевірка в Safari/Chrome/TextEdit на реальному Mac.
+- ⏳ `docs/development/manual-tests/M3.md` — перевірка в Safari/Chrome/TextEdit на реальному Mac.
 
 ### M4 — ітерація 1: PASS
 - Linux: 317 тестів, 0 падінь. macOS CI (run 38434434649): `xcodebuild build` ✅, `xcodebuild test` ✅ (50 тестів, зокрема AppModelTransferTests 17), `swift test` на macOS ✅.
 - Неблокуючі зауваження (на M5): «..» і англомовна системна причина в `readFailed`/`storage`; імпортоване слово не очищається; ready-запис з `[""]` приймається; кількість записів у повідомленні експорту з окремого знімка; синхронізувати §10 ARCHITECTURE з новими API.
-- ⏳ `docs/manual-tests/M4.md` — перевірка панелей на Mac.
+- ⏳ `docs/development/manual-tests/M4.md` — перевірка панелей на Mac.
 
 ### M5 — ітерація 1: FAIL (інфраструктура, не код)
 - Linux: 354 тести, 0 падінь. Увесь виробничий код M5 зібрано й протестовано на macOS у run 38436944130 (коміт df958a1): `xcodebuild build` ✅, `xcodebuild test` ✅.
 - Коміт 91a651c додав лише тести (19 нових тестів застосунку: AppModelM5Tests 13, LoginItemServiceTests 1, SpeechServiceTests 5). Run 38468460084 не отримав жодного раннера (runner_id 0, жодного кроку, навіть для Linux-job); повторний запуск через інтеграцію → 403. Найімовірніше, вичерпано ліміт хвилин / spending limit GitHub Actions (macOS-хвилини рахуються з множником).
 - Judge: блокуючих дефектів у коді немає; усі відкладені зауваження M2–M4 виправлено; README повний. Для PASS потрібен зелений macOS CI з новими тестами.
 - Що зробити: відновити GitHub Actions (Settings → Billing / spending limit) і перезапустити CI (Actions → CI → Re-run) або локально на Mac: `xcodegen generate && xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-`.
-- ⏳ `docs/manual-tests/M5.md` — menu bar, автозапуск, озвучення на реальному Mac.
+- ⏳ `docs/development/manual-tests/M5.md` — menu bar, автозапуск, озвучення на реальному Mac.
 - 2026-10-14: користувач відновив ліміт, але перезапуск через інтеграцію заборонений (403 на rerun і workflow_dispatch). Рішення користувача: чекати оновлення ліміту. CI оптимізовано для економії macOS-хвилин: `macos-core` злито в `macos-app` (один macOS-раннер), зміни лише в `*.md`/`docs/`/`.claude/` не запускають CI, `concurrency` скасовує застарілі прогони.
 
 ### M5 — ітерація 2: PASS
@@ -82,8 +83,14 @@
 
 ### M8 — PASS
 - Запит користувача: переклад і приклад у контексті IT/QA. Рішення користувача: завжди IT/QA (без налаштування); наявний словник НЕ перекладати (спершу обрав «перекласти все», потім скасував — план скорочено до D31).
-- Інструкція (≤70 слів) додається в system-промпт: одиночний, комбінований EN+IT (один раз), пакетне доповнення італійською. JSON-схеми, кількість запитів і тіло запиту без змін. App/ не змінювався — перезбірка на Mac не потрібна для перевірки компіляції, лише для якості відповідей (U19, `docs/manual-tests/M8.md`).
+- Інструкція (≤70 слів) додається в system-промпт: одиночний, комбінований EN+IT (один раз), пакетне доповнення італійською. JSON-схеми, кількість запитів і тіло запиту без змін. App/ не змінювався — перезбірка на Mac не потрібна для перевірки компіляції, лише для якості відповідей (U19, `docs/development/manual-tests/M8.md`).
 - Linux: 508 тестів, 0 падінь.
+
+### M9 — PASS (умовний)
+- Інтерфейс англійською (за замовчуванням) та українською через чисту Swift-таблицю `L10n` у ядрі; вибір у Налаштуваннях, застосування після перезапуску (обмежений цикл очікування + `open`).
+- Services: ключ `NSMenuItem.default` лишився «Додати в словник» (не скидає увімкнення/шорткат), англійська назва через `en.lproj/ServicesMenu.strings`; назва йде за мовою системи.
+- Linux: 542 тести, 0 падінь; скан кириличних літералів поза таблицями локалізації.
+- Дрібне (виправити в M10): `-ge` → `-gt` у скрипті перезапуску; англійський текст про ліміт слів; «Restart Now» за HIG.
 
 ## Відкриті питання / невизначеності щодо macOS API
 

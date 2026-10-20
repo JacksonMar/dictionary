@@ -69,7 +69,7 @@ App/
              LoginItemService.swift (LoginItemManaging), SpeechService.swift (SpeechSpeaking), FilePanels.swift, NetworkMonitor.swift, OSLogSink.swift,
              AppearanceController.swift (AppearanceApplying, M6)
   Tests/                           # VocabAppTests (лише macOS)
-docs/manual-tests/M1.md … M7.md
+docs/development/manual-tests/M1.md … M7.md
 README.md                          # M5
 ```
 
@@ -1201,7 +1201,7 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 `Repository/RepositoryError.swift`, `Security/RedactingLogger.swift` (база); App: `VocabApp.swift`, `AppDelegate.swift`,
 `AppModel.swift`, `AppEnvironment.swift`, `Views/DictionaryWindowView.swift`, `EntryRowView.swift`,
 `EntryEditorView.swift`, `AddEntryView.swift`, `MenuBarContentView.swift` (мінімальний: «Відкрити словник», «Вийти»),
-`App/Tests/AppModelTests.swift`, `docs/manual-tests/M1.md`.
+`App/Tests/AppModelTests.swift`, `docs/development/manual-tests/M1.md`.
 
 | КП | Перевірка |
 |---|---|
@@ -1223,7 +1223,7 @@ Replace: `ImportMerger.collapseDuplicates(parsed.entries)` → `repository.repla
 App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.swift`, `Views/SettingsView.swift`
 (ключ — `SecureField`, показ лише «Ключ збережено»; модель; кнопка «Перевірити» не обов'язкова),
 статус-бейджі `pending/failed` і «Повторити» в `EntryRowView`, «Заповнити через Claude» в `AddEntryView`;
-`App/Tests/KeychainSecretStoreTests.swift`; `docs/manual-tests/M2.md`.
+`App/Tests/KeychainSecretStoreTests.swift`; `docs/development/manual-tests/M2.md`.
 
 | КП | Перевірка |
 |---|---|
@@ -1246,7 +1246,7 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 **Файли:** `UseCases/ServiceRequestHandler.swift`, `UseCases/NotificationText.swift`; App:
 `Platform/ServicesProvider.swift`, `Platform/NotificationService.swift`, `NSServices` в `App/Info.plist`,
 реєстрація в `AppDelegate`; `App/Tests/ServicesProviderTests.swift`, `App/Tests/InfoPlistServicesTests.swift`;
-`docs/manual-tests/M3.md`.
+`docs/development/manual-tests/M3.md`.
 
 | КП | Перевірка |
 |---|---|
@@ -1266,7 +1266,7 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 
 **Файли:** `Transfer/*`, `Storage/BackupManager.swift` (ротація); App: `Platform/FilePanels.swift`,
 `Views/ImportModeDialog.swift`, розділ «Перенесення» у `SettingsView`, алерт зі звітом;
-`App/Tests/AppModelTransferTests.swift`; `docs/manual-tests/M4.md`.
+`App/Tests/AppModelTransferTests.swift`; `docs/development/manual-tests/M4.md`.
 
 | КП | Перевірка |
 |---|---|
@@ -1286,7 +1286,7 @@ App: `Platform/KeychainSecretStore.swift`, `OSLogSink.swift`, `NetworkMonitor.sw
 **Файли:** `Repository/EntryQuery.swift`; App: `Platform/LoginItemService.swift`, `Platform/SpeechService.swift`,
 повний `MenuBarContentView` (лічильник pending, «Повторити очікувані»), пошук (`.searchable`) і сортування
 (`Picker`) у `DictionaryWindowView`, кнопка озвучення в `EntryRowView`, тумблер автозапуску в `SettingsView`;
-`App/Tests/SpeechServiceTests.swift`, `App/Tests/LoginItemServiceTests.swift`; `README.md`; `docs/manual-tests/M5.md`.
+`App/Tests/SpeechServiceTests.swift`, `App/Tests/LoginItemServiceTests.swift`; `README.md`; `docs/development/manual-tests/M5.md`.
 
 | КП | Перевірка |
 |---|---|
@@ -1310,7 +1310,7 @@ README-інструкції відтворювані на чистому кор�
 `Processing/ProcessingTrigger.swift` (§8.3). App: `Views/EntryTableView.swift` (новий; `EntryRowView.swift` видалити — XcodeGen збирає джерела з каталогу `App/Sources`, тож після `xcodegen generate` файл зникає з проєкту автоматично, правити `project.yml` не треба),
 `Views/PaginationBar.swift`, `Views/DictionaryWindowView.swift`, `Views/SettingsView.swift`, `Platform/AppearanceController.swift`,
 `AppModel.swift`, `AppDelegate.swift` (тема на старті, логер `notifications`, тригери). Документи: `README.md`,
-`docs/manual-tests/M3.md`, `docs/manual-tests/M6.md`. Тести: `Tests/VocabCoreTests/PaginationTests.swift`,
+`docs/development/manual-tests/M3.md`, `docs/development/manual-tests/M6.md`. Тести: `Tests/VocabCoreTests/PaginationTests.swift`,
 `ProcessingTriggerTests.swift`, доповнення `SettingsStoreTests.swift`; `App/Tests/AppModelM6Tests.swift`,
 `App/Tests/AppearanceControllerTests.swift` (`SpyAppearanceApplier` — у файлі тестів M6).
 
@@ -1373,7 +1373,7 @@ App: `App/Sources/AppModel.swift` (режим відображення, допо
 `Importer`/`Merger`/`Exporter`/`Transfer`-тести (записи без варіантів), `LanguagePairRegistryTests`, `SpeechServiceTests`,
 `AppModel*Tests` M1–M6 (без `variantBackfill`, режим EN за замовчуванням). Якщо якийсь з них падає через `Entry`
 з новими полями — Developer оновлює очікування й фіксує це у звіті. Нові тести M7 використовують `.englishUkrainian`.
-Документи: `docs/manual-tests/M7.md`, `README.md` (розділ «Італійська»).
+Документи: `docs/development/manual-tests/M7.md`, `README.md` (розділ «Італійська»).
 
 Умови для тестів кількості запитів: `ClaudeLookupService` + `MockURLProtocol` (лічильник запитів, §14) — реальний
 HTTP-шар, а не стаб; `FixedDateProvider`; тимчасовий каталог.
@@ -1416,7 +1416,7 @@ HTTP-шар, а не стаб; `FixedDateProvider`; тимчасовий кат�
 
 **Файли.** Ядро: `Languages/{LanguagePair,RenderingLanguage,EnglishUkrainian,Italian}.swift`,
 `Claude/{PromptBuilder,VariantPromptBuilder}.swift`. Тести: нові `Tests/VocabCoreTests/DomainPromptTests.swift`;
-міграція — нижче. App не змінюється. Документи: `README.md` (абзац «IT/QA-контекст»), `docs/manual-tests/M8.md`.
+міграція — нижче. App не змінюється. Документи: `README.md` (абзац «IT/QA-контекст»), `docs/development/manual-tests/M8.md`.
 
 **Міграція тестів.** `M7TestSupport.englishUkrainianSourceOnly` будує `PromptTemplate(system:userWord:userPhrase:)` з
 шаблонів en-uk (без `domainInstruction`) → M2-тести й `testPairWithoutRenderingsPromptUnchanged` не змінюються. Два
@@ -1467,7 +1467,7 @@ VariantBatchResponseParser}.swift`, `Storage/StorageError.swift`, `Repository/{R
 VariantBackfillProcessor}.swift`. App: усі `Views/*`, `AppModel.swift`, `AppDelegate.swift`, `AppEnvironment.swift`,
 `VocabApp.swift`, `Platform/{ServicesProvider,FilePanels}.swift`, нові `Platform/{AppRelauncher,PreferredLanguagesWriter,
 InterfaceLanguageBootstrap}.swift`, `App/Resources/{en,uk}.lproj/ServicesMenu.strings`, `App/Info.plist`, `project.yml`.
-Документи: `docs/manual-tests/M9.md`.
+Документи: `docs/development/manual-tests/M9.md`.
 
 | КП | Перевірка |
 |---|---|

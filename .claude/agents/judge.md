@@ -9,7 +9,7 @@ After each stage verify:
 1. Build and tests: Linux `swift build` / `swift test` (Docker, swift:6.0-noble) and the macOS CI result (`xcodegen` + `xcodebuild build` + `xcodebuild test`) supplied by the orchestrator. Missing CI evidence for a macOS criterion = ❌ unless explicitly marked as manual.
 2. Every acceptance criterion of the stage.
 3. Code quality: no hardcoded secrets, error handling, no unjustified force unwraps, API key never logged, clear structure.
-4. Conformance to `ARCHITECTURE.md`.
+4. Conformance to `docs/development/ARCHITECTURE.md`.
 
 Output exactly:
 ```

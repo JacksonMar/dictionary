@@ -122,7 +122,7 @@ enum TestDates {
 enum TestFixtures {
     static let entryID = "6F1C2A4E-8B7D-4C3A-9E2F-1A2B3C4D5E6F"
 
-    /// Приклад зі схеми вимог (docs/REQUIREMENTS.md) з конкретними значеннями.
+    /// Приклад зі схеми вимог (docs/development/REQUIREMENTS.md) з конкретними значеннями.
     static let requirementsExample = """
     {
       "schemaVersion": 1,
