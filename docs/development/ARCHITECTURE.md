@@ -1502,7 +1502,7 @@ InterfaceLanguageBootstrap}.swift`, `App/Resources/{en,uk}.lproj/ServicesMenu.st
 ## 16. Правила для Developer / Tester
 
 - Developer реалізує лише файли поточного етапу; публічні сигнатури — як тут. Відхилення — у звіті.
-- Перевірка ядра на Linux: `docker run --rm -v /home/user/dictionary:/w -w /w swift:6.0-noble swift test`.
+- Перевірка ядра на Linux: `docker run --rm -v "$PWD":/w -w /w swift:6.0-noble swift test`.
 - Тести ядра не використовують AppKit/Security; тести застосунку не роблять мережевих запитів і не змінюють
   реальний `~/Library/Application Support/VocabApp` (під тестами — тимчасовий каталог).
 - Нові невизначеності щодо macOS API — у `PROGRESS.md`, розділ «Відкриті питання».
