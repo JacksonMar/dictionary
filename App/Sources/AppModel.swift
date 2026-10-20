@@ -172,6 +172,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var isBackfilling = false
     /// M7: підсумок останнього проходу доповнення.
     @Published private(set) var lastBackfillReport: VariantBackfillReport?
+    /// M9: мова інтерфейсу, вибрана в налаштуваннях (застосовується після перезапуску, D37).
+    @Published private(set) var interfaceLanguageSelection: AppLanguage
+    /// M9: мова інтерфейсу поточного запуску (`L10n.current` на момент створення моделі).
+    let runningInterfaceLanguage: AppLanguage
 
     /// Типова назва файлу експорту.
     static let defaultExportFileName = "dictionary.json"
@@ -197,12 +201,17 @@ final class AppModel: ObservableObject {
     private(set) var postImportProcessing: Task<Void, Never>?
     private var changesTask: Task<Void, Never>?
     private var pendingTimer: Timer?
+    /// M9: запис `AppleLanguages`; `nil` — не записується (тести без фейка).
+    private let preferredLanguages: PreferredLanguagesWriting?
+    /// M9: перезапуск застосунку; `nil` — недоступний (тоді «Restart now» показує текст про ручний перезапуск).
+    private let relauncher: AppRelaunching?
 
     /// `claude == nil` — без Claude (M1-режим): «Заповнити через Claude» і черга недоступні.
     /// `transfer == nil` — експорт/імпорт недоступні. `filePanels == nil` — системні `NSSavePanel`/`NSOpenPanel`.
     /// `loginItems == nil` — автозапуск недоступний; `speech == nil` — озвучення недоступне (M5).
     /// `settings == nil` → `claude?.settings`, інакше `InMemorySettingsStore()` (одне джерело істини, M6).
     /// `appearanceApplier == nil` — тема лише зберігається, але не застосовується (напр. під тестами).
+    /// `preferredLanguages`/`relauncher` (M9) — запис `AppleLanguages` і перезапуск; `nil` — недоступні.
     init(
         repository: DictionaryRepository,
         languagePairID: String = LanguagePairRegistry.defaultPairID,
@@ -214,7 +223,9 @@ final class AppModel: ObservableObject {
         registry: LanguagePairRegistry = .shared,
         settings: SettingsStore? = nil,
         appearanceApplier: AppearanceApplying? = nil,
-        variantBackfill: VariantBackfillProcessor? = nil
+        variantBackfill: VariantBackfillProcessor? = nil,
+        preferredLanguages: PreferredLanguagesWriting? = nil,
+        relauncher: AppRelaunching? = nil
     ) {
         self.repository = repository
         self.languagePairID = languagePairID
@@ -230,6 +241,10 @@ final class AppModel: ObservableObject {
         self.pageSize = Pagination.normalizedPageSize(resolvedSettings.pageSize)
         self.appearance = resolvedSettings.appearance
         self.variantBackfill = variantBackfill
+        self.preferredLanguages = preferredLanguages
+        self.relauncher = relauncher
+        self.runningInterfaceLanguage = L10n.current
+        self.interfaceLanguageSelection = resolvedSettings.interfaceLanguage
         // M7: збережений режим перевіряється для поточної пари; невідомий → мова джерела («EN»).
         let storedLanguage = resolvedSettings.displayLanguageID
         let pair = registry.pair(id: languagePairID)
@@ -254,8 +269,7 @@ final class AppModel: ObservableObject {
             let result = try await repository.load()
             loadError = nil
             if let backupURL = result.recoveredBackupURL {
-                loadWarning = "Файл словника був пошкоджений. Його перенесено в \(backupURL.path), "
-                    + "розпочато порожній словник."
+                loadWarning = L10n.text(.modelLoadRecovered, ["path": backupURL.path])
             }
             isLoaded = true
             apply(await repository.allEntries())
@@ -263,7 +277,7 @@ final class AppModel: ObservableObject {
         } catch let error as StorageError {
             loadError = error.userMessage
         } catch {
-            loadError = "Не вдалося завантажити словник: \(error.localizedDescription)"
+            loadError = L10n.text(.modelLoadFailed, ["reason": error.localizedDescription])
         }
     }
 
@@ -330,7 +344,7 @@ final class AppModel: ObservableObject {
     @discardableResult
     func addViaClaude(_ rawText: String) async -> AddWordOutcome? {
         guard let claude else {
-            operationError = "Claude недоступний"
+            operationError = L10n.text(.modelClaudeUnavailable)
             return nil
         }
         let outcome = await claude.addWord.execute(rawText: rawText)
@@ -538,7 +552,7 @@ final class AppModel: ObservableObject {
         let report = await variantBackfill.refresh(entryID: id, languageID: target)
         await finishBackfill(.variantRefresh, languageID: target, report: report)
         if report.alreadyRunning {
-            operationError = "Доповнення вже триває, спробуйте пізніше"
+            operationError = L10n.text(.modelBackfillRunning)
         } else if let error = report.stoppedBy {
             operationError = error.userMessage
         }
@@ -563,6 +577,36 @@ final class AppModel: ObservableObject {
     /// Застосовує збережену тему (на старті з `AppDelegate`).
     func applyCurrentAppearance() {
         appearanceApplier?.apply(appearance)
+    }
+
+    // MARK: - Мова інтерфейсу (M9)
+
+    /// Вибір у налаштуваннях відрізняється від мови поточного запуску → потрібен перезапуск.
+    var interfaceLanguageNeedsRestart: Bool {
+        interfaceLanguageSelection != runningInterfaceLanguage
+    }
+
+    /// Зберігає мову інтерфейсу й `AppleLanguages = [code]` (системні рядки після перезапуску, D36).
+    /// Поточний UI не змінюється до перезапуску.
+    func setInterfaceLanguage(_ language: AppLanguage) {
+        settings.interfaceLanguage = language
+        interfaceLanguageSelection = language
+        preferredLanguages?.setAppleLanguages([language.rawValue])
+    }
+
+    /// «Restart now»: перезапуск через `AppRelaunching`. Помилка або недоступний перезапуск → `settingsError`
+    /// з порадою перезапустити вручну.
+    func restartToApplyLanguage() {
+        guard let relauncher else {
+            settingsError = L10n.text(.settingsRestartFailed)
+            return
+        }
+        do {
+            try relauncher.relaunch()
+            settingsError = nil
+        } catch {
+            settingsError = L10n.text(.settingsRestartFailed)
+        }
     }
 
     // MARK: - Озвучення (M5)
@@ -632,8 +676,8 @@ final class AppModel: ObservableObject {
             try loginItems.setEnabled(enabled)
             loginItemError = nil
         } catch {
-            let action = enabled ? "увімкнути" : "вимкнути"
-            loginItemError = "Не вдалося \(action) автозапуск: \(error.localizedDescription)"
+            let key: L10nKey = enabled ? .modelLoginItemEnableFailed : .modelLoginItemDisableFailed
+            loginItemError = L10n.text(key, ["reason": error.localizedDescription])
         }
         loginItemState = loginItems.state
     }
@@ -711,14 +755,14 @@ final class AppModel: ObservableObject {
             // Кількість — з того самого знімка, що записано у файл.
             let count = try await transfer.exportDictionary(to: url)
             transferMessage = TransferMessage(
-                title: "Словник експортовано",
-                text: "Записів: \(count). Файл: \(url.path)",
+                title: L10n.text(.transferExportedTitle),
+                text: L10n.text(.transferExportedText, ["count": String(count), "path": url.path]),
                 isError: false
             )
             return true
         } catch {
             transferMessage = TransferMessage(
-                title: "Не вдалося експортувати",
+                title: L10n.text(.transferExportFailedTitle),
                 text: Self.exportErrorMessage(error),
                 isError: true
             )
@@ -765,7 +809,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Імпорт з `url`. Успіх → `lastReport` і `transferMessage` зі звітом; помилка → `transferMessage` з
-    /// україномовним текстом (словник не змінено). Імпортовані pending-записи передаються черзі.
+    /// текстом мовою інтерфейсу (словник не змінено). Імпортовані pending-записи передаються черзі.
     @discardableResult
     func `import`(from url: URL, mode: ImportMode) async -> ImportReport? {
         guard let transfer else {
@@ -779,7 +823,7 @@ final class AppModel: ObservableObject {
             let report = try await transfer.importDictionary(from: url, mode: mode)
             lastReport = report
             transferMessage = TransferMessage(
-                title: "Імпорт завершено",
+                title: L10n.text(.transferImportedTitle),
                 text: Self.reportText(report),
                 isError: false
             )
@@ -792,8 +836,12 @@ final class AppModel: ObservableObject {
             return report
         } catch {
             let message = (error as? ImportError)?.userMessage
-                ?? "Не вдалося імпортувати: \(error.localizedDescription). Словник не змінено."
-            transferMessage = TransferMessage(title: "Не вдалося імпортувати", text: message, isError: true)
+                ?? L10n.text(.transferImportFailedGeneric, ["reason": error.localizedDescription])
+            transferMessage = TransferMessage(
+                title: L10n.text(.transferImportFailedTitle),
+                text: message,
+                isError: true
+            )
             return nil
         }
     }
@@ -804,20 +852,22 @@ final class AppModel: ObservableObject {
         var lines = report.skippedReasons.prefix(maxReportedSkipReasons).map { "• \($0)" }
         let rest = report.skippedReasons.count - maxReportedSkipReasons
         if rest > 0 {
-            lines.append("…та ще \(rest)")
+            lines.append(L10n.text(.transferReportMore, ["count": String(rest)]))
         }
-        return report.summary + "\n\nПропущено:\n" + lines.joined(separator: "\n")
+        return report.summary + "\n\n" + L10n.text(.transferReportSkippedHeader) + "\n" + lines.joined(separator: "\n")
     }
 
-    private static let unavailableTransferMessage = TransferMessage(
-        title: "Перенесення недоступне",
-        text: "Експорт та імпорт недоступні",
-        isError: true
-    )
+    private static var unavailableTransferMessage: TransferMessage {
+        TransferMessage(
+            title: L10n.text(.transferUnavailableTitle),
+            text: L10n.text(.transferUnavailableText),
+            isError: true
+        )
+    }
 
     private static func exportErrorMessage(_ error: Error) -> String {
         if case .writeFailed(let reason)? = error as? StorageError {
-            return "Не вдалося записати файл: \(reason)"
+            return L10n.text(.transferWriteFailed, ["reason": reason])
         }
         return message(for: error)
     }
@@ -828,13 +878,13 @@ final class AppModel: ObservableObject {
         guard let claude else { return false }
         let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else {
-            settingsError = "Введіть API-ключ"
+            settingsError = L10n.text(.settingsErrorEnterKey)
             return false
         }
         do {
             try claude.secrets.writeSecret(key, for: .anthropicAPIKey)
         } catch {
-            settingsError = "Не вдалося зберегти ключ: \(Self.secretErrorMessage(error))"
+            settingsError = L10n.text(.settingsErrorSaveKey, ["reason": Self.secretErrorMessage(error)])
             return false
         }
         claude.keyCache.set(key)
@@ -854,7 +904,7 @@ final class AppModel: ObservableObject {
         do {
             try claude.secrets.deleteSecret(for: .anthropicAPIKey)
         } catch {
-            settingsError = "Не вдалося видалити ключ: \(Self.secretErrorMessage(error))"
+            settingsError = L10n.text(.settingsErrorDeleteKey, ["reason": Self.secretErrorMessage(error)])
             return false
         }
         // Кеш для редагування логів не очищаємо: ключі в ньому накопичуються, тож видалений ключ і далі
@@ -893,7 +943,7 @@ final class AppModel: ObservableObject {
             }
         } catch {
             hasAPIKey = false
-            settingsError = "Не вдалося прочитати ключ: \(Self.secretErrorMessage(error))"
+            settingsError = L10n.text(.settingsErrorReadKey, ["reason": Self.secretErrorMessage(error)])
         }
         modelName = claude.settings.model
     }
@@ -905,17 +955,17 @@ final class AppModel: ObservableObject {
         case .duplicate(let entry):
             return RepositoryError.duplicate(entry).userMessage
         case .failed(let entry, let error):
-            return "Не вдалося додати «\(entry.word)»: \(error.userMessage)"
+            return L10n.text(.modelAddFailed, ["word": entry.word, "reason": error.userMessage])
         case .rejected(let rejection):
             switch rejection {
             case .empty:
-                return "Введіть слово або фразу"
+                return L10n.text(.inputEnterWord)
             case .tooLong(let max):
-                return "Забагато тексту (макс. \(max) символів)"
+                return L10n.text(.inputTooLong, ["max": String(max)])
             case .tooManyWords(let max):
-                return "Забагато слів (макс. \(max))"
+                return L10n.text(.inputTooManyWords, ["max": String(max)])
             case .noLetters:
-                return "Текст не містить слів"
+                return L10n.text(.inputNoLetters)
             }
         case .storageError(let message):
             return message
@@ -923,7 +973,7 @@ final class AppModel: ObservableObject {
     }
 
     private static func secretErrorMessage(_ error: Error) -> String {
-        (error as? SecretStoreError)?.userMessage ?? "невідома помилка"
+        (error as? SecretStoreError)?.userMessage ?? L10n.text(.settingsErrorUnknown)
     }
 
     /// Таймер `processDue` кожні 60 с — лише поки є pending-записи.
@@ -973,11 +1023,11 @@ final class AppModel: ObservableObject {
 
     static func validationError(word: String, status: EntryStatus, translations: [String]) -> String? {
         if word.isEmpty {
-            return "Введіть слово або фразу"
+            return L10n.text(.inputEnterWord)
         }
         // `ready` без перекладів не пройде валідацію імпорту (§10), тому не дозволяємо створити такий запис.
         if status == .ready && translations.isEmpty {
-            return "Додайте хоча б один переклад"
+            return L10n.text(.inputAddTranslation)
         }
         return nil
     }

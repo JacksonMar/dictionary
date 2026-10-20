@@ -21,29 +21,37 @@ public enum ImportError: Error, Equatable {
 }
 
 extension ImportError {
-    private static let untouched = "Словник не змінено."
-
-    /// Україномовний текст для UI.
+    /// Текст для UI поточною мовою інтерфейсу (`L10n.current`).
     public var userMessage: String {
+        userMessage(in: L10n.current)
+    }
+
+    /// Речення про причину + «Словник не змінено.».
+    public func userMessage(in language: AppLanguage) -> String {
+        let text: String
         switch self {
         case .emptyFile:
-            return "Файл порожній. \(Self.untouched)"
+            text = L10n.text(.importEmptyFile, language: language)
         case .notJSON:
-            return "Файл не є словником у форматі JSON. \(Self.untouched)"
+            text = L10n.text(.importNotJSON, language: language)
         case .missingSchemaVersion:
-            return "У файлі немає коректного поля schemaVersion — це не файл словника. \(Self.untouched)"
+            text = L10n.text(.importMissingSchemaVersion, language: language)
         case .unsupportedSchemaVersion(let version):
-            return "Непідтримувана версія схеми файлу (\(version)); підтримується версія "
-                + "\(DictionaryFile.currentSchemaVersion). \(Self.untouched)"
+            text = L10n.text(
+                .importUnsupportedSchema,
+                ["version": String(version), "supported": String(DictionaryFile.currentSchemaVersion)],
+                language: language
+            )
         case .missingEntries:
-            return "У файлі немає списку записів (entries). \(Self.untouched)"
+            text = L10n.text(.importMissingEntries, language: language)
         case .readFailed(let reason):
-            return "Не вдалося прочитати файл: \(Self.clause(reason)). \(Self.untouched)"
+            text = L10n.text(.importReadFailed, ["reason": Self.clause(reason)], language: language)
         case .backupFailed(let reason):
-            return "Не вдалося створити резервну копію поточного словника (\(Self.clause(reason))). \(Self.untouched)"
+            text = L10n.text(.importBackupFailed, ["reason": Self.clause(reason)], language: language)
         case .storage(let reason):
-            return "\(Self.clause(reason)). \(Self.untouched)"
+            text = L10n.text(.importStorage, ["reason": Self.clause(reason)], language: language)
         }
+        return text + " " + L10n.text(.importUntouched, language: language)
     }
 
     /// Причина без крапки в кінці: інакше вийде «…file.. Словник не змінено.».

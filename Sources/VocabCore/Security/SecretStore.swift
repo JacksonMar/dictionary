@@ -14,12 +14,17 @@ public enum SecretStoreError: Error, Equatable {
 }
 
 extension SecretStoreError {
+    /// Опис для UI поточною мовою інтерфейсу (`L10n.current`).
     public var userMessage: String {
+        userMessage(in: L10n.current)
+    }
+
+    public func userMessage(in language: AppLanguage) -> String {
         switch self {
         case .keychain(let status):
-            return "Помилка Keychain (код \(status))"
+            return L10n.text(.secretKeychain, ["status": String(status)], language: language)
         case .encoding:
-            return "Не вдалося прочитати ключ з Keychain"
+            return L10n.text(.secretEncoding, language: language)
         }
     }
 }

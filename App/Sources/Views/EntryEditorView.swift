@@ -84,13 +84,13 @@ struct EntryFormFields: View {
 
     var body: some View {
         Form {
-            TextField("Слово або фраза", text: $form.word)
-            TextField("Лема", text: $form.lemma)
-            TextField("Частина мови", text: $form.partOfSpeech)
-            TextField("Транскрипція", text: $form.transcription)
-            TextField("Переклади (через кому)", text: $form.translations)
-            TextField("Приклад", text: $form.exampleSource)
-            TextField("Переклад прикладу", text: $form.exampleTranslation)
+            TextField(L10n.text(.editorWord), text: $form.word)
+            TextField(L10n.text(.editorLemma), text: $form.lemma)
+            TextField(L10n.text(.editorPartOfSpeech), text: $form.partOfSpeech)
+            TextField(L10n.text(.editorTranscription), text: $form.transcription)
+            TextField(L10n.text(.editorTranslationsInput), text: $form.translations)
+            TextField(L10n.text(.editorExample), text: $form.exampleSource)
+            TextField(L10n.text(.editorExampleTranslation), text: $form.exampleTranslation)
         }
     }
 }
@@ -113,16 +113,16 @@ struct EntryEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Редагувати запис")
+                Text(L10n.text(.editorTitle))
                     .font(.headline)
                 Spacer()
                 if model.isSpeechAvailable {
                     Button {
                         model.speak(form.word, languagePair: entry.languagePair)
                     } label: {
-                        Label("Озвучити", systemImage: "speaker.wave.2")
+                        Label(L10n.text(.commonSpeak), systemImage: "speaker.wave.2")
                     }
-                    .help("Озвучити слово")
+                    .help(L10n.text(.addSpeakHelp))
                     .disabled(!form.canSave)
                 }
             }
@@ -136,11 +136,11 @@ struct EntryEditorView: View {
             }
             HStack {
                 Spacer()
-                Button("Скасувати") {
+                Button(L10n.text(.commonCancel)) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
-                Button("Зберегти") {
+                Button(L10n.text(.commonSave)) {
                     save()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -181,13 +181,13 @@ private struct VariantReadOnlySection: View {
         GroupBox(texts.sectionTitle) {
             VStack(alignment: .leading, spacing: 6) {
                 if let entry = currentEntry, let variant = entry.readyVariant(rendering.id) {
-                    VariantFieldRow(title: "Слово", value: variant.word ?? "")
-                    VariantFieldRow(title: "Лема", value: variant.lemma ?? "")
-                    VariantFieldRow(title: "Частина мови", value: variant.partOfSpeech ?? "")
-                    VariantFieldRow(title: "Транскрипція", value: variant.transcription ?? "")
-                    VariantFieldRow(title: "Переклади", value: variant.translations.joined(separator: ", "))
-                    VariantFieldRow(title: "Приклад", value: variant.example?.source ?? "")
-                    VariantFieldRow(title: "Переклад прикладу", value: variant.example?.translation ?? "")
+                    VariantFieldRow(title: L10n.text(.tableWord), value: variant.word ?? "")
+                    VariantFieldRow(title: L10n.text(.editorLemma), value: variant.lemma ?? "")
+                    VariantFieldRow(title: L10n.text(.editorPartOfSpeech), value: variant.partOfSpeech ?? "")
+                    VariantFieldRow(title: L10n.text(.editorTranscription), value: variant.transcription ?? "")
+                    VariantFieldRow(title: L10n.text(.editorTranslations), value: variant.translations.joined(separator: ", "))
+                    VariantFieldRow(title: L10n.text(.editorExample), value: variant.example?.source ?? "")
+                    VariantFieldRow(title: L10n.text(.editorExampleTranslation), value: variant.example?.translation ?? "")
                 } else {
                     Text(statusText)
                         .foregroundColor(Color.secondary)
@@ -202,7 +202,7 @@ private struct VariantReadOnlySection: View {
                         refresh()
                     }
                     .disabled(!canRefresh)
-                    .help("Один запит до Claude лише для цього запису")
+                    .help(L10n.text(.editorVariantRefreshHelp))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -220,16 +220,18 @@ private struct VariantReadOnlySection: View {
     }
 
     private var statusText: String {
-        guard let entry = currentEntry else { return "Запис не знайдено" }
+        guard let entry = currentEntry else { return L10n.text(.repositoryNotFound) }
         guard entry.status == .ready else {
-            return "Буде заповнено разом з основним перекладом"
+            return L10n.text(.editorVariantWaitsForMain)
         }
         switch entry.variantState(rendering.id) {
         case .failed:
             let lastError = entry.variants?[rendering.id]?.lastError ?? ""
-            return lastError.isEmpty ? "Помилка доповнення" : "Помилка: \(lastError)"
+            return lastError.isEmpty
+                ? L10n.text(.tableHelpVariantFailed)
+                : L10n.text(.editorVariantFailedWithError, ["error": lastError])
         case .missing, .stale, .pending, .ready:
-            return "Ще не доповнено"
+            return L10n.text(.editorVariantNotFilled)
         }
     }
 

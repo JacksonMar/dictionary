@@ -19,7 +19,7 @@ struct DictionaryWindowView: View {
     var body: some View {
         content
             .frame(minWidth: 720, minHeight: 420)
-            .searchable(text: $model.query.searchText, placement: .toolbar, prompt: "Слово або переклад")
+            .searchable(text: $model.query.searchText, placement: .toolbar, prompt: L10n.text(.dictionarySearchPrompt))
             .toolbar {
                 // M7: перемикач мови відображення EN | IT (прихований, якщо в пари немає мов відображення; U16).
                 ToolbarItem(placement: .principal) {
@@ -36,10 +36,10 @@ struct DictionaryWindowView: View {
                             Text(sort.title).tag(sort)
                         }
                     } label: {
-                        Label("Сортування", systemImage: "arrow.up.arrow.down")
+                        Label(L10n.text(.dictionarySort), systemImage: "arrow.up.arrow.down")
                     }
                     .pickerStyle(.menu)
-                    .help("Сортування списку")
+                    .help(L10n.text(.dictionarySortHelp))
                     .disabled(!model.isLoaded)
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -53,9 +53,9 @@ struct DictionaryWindowView: View {
                                     await model.retryAll()
                                 }
                             } label: {
-                                Label("Повторити всі", systemImage: "arrow.clockwise")
+                                Label(L10n.text(.dictionaryRetryAll), systemImage: "arrow.clockwise")
                             }
-                            .help("Повторити запит до Claude для всіх записів, що очікують обробки або з помилкою")
+                            .help(L10n.text(.dictionaryRetryAllHelp))
                         }
                     }
                 }
@@ -63,9 +63,9 @@ struct DictionaryWindowView: View {
                     Button {
                         isAdding = true
                     } label: {
-                        Label("Додати", systemImage: "plus")
+                        Label(L10n.text(.commonAdd), systemImage: "plus")
                     }
-                    .help("Додати слово вручну")
+                    .help(L10n.text(.dictionaryAddHelp))
                     .disabled(!model.isLoaded)
                 }
             }
@@ -86,7 +86,7 @@ struct DictionaryWindowView: View {
                 Button(Self.deleteButtonTitle(for: deletion.entries), role: .destructive) {
                     delete(deletion.entries)
                 }
-                Button("Скасувати", role: .cancel) {}
+                Button(L10n.text(.commonCancel), role: .cancel) {}
             }
             // Зміна сторінки (у т.ч. скидання на 1 після пошуку/сортування/розміру) скидає виділення.
             .onChange(of: model.pageNumber) { _ in
@@ -96,8 +96,8 @@ struct DictionaryWindowView: View {
             .onChange(of: model.displayLanguageID) { _ in
                 selection.removeAll()
             }
-            .alert("Помилка", isPresented: operationErrorBinding) {
-                Button("OK") {
+            .alert(L10n.text(.commonError), isPresented: operationErrorBinding) {
+                Button(L10n.text(.commonOk)) {
                     model.operationError = nil
                 }
             } message: {
@@ -120,7 +120,7 @@ struct DictionaryWindowView: View {
                         Text(warning)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        Button("Закрити") {
+                        Button(L10n.text(.commonClose)) {
                             model.loadWarning = nil
                         }
                         .buttonStyle(.borderless)
@@ -129,13 +129,13 @@ struct DictionaryWindowView: View {
                     .background(Color.yellow.opacity(0.2))
                 }
                 if model.entries.isEmpty {
-                    messageView(systemImage: "character.book.closed", text: "Словник порожній. Додайте слово кнопкою «+».")
+                    messageView(systemImage: "character.book.closed", text: L10n.text(.dictionaryEmpty))
                 } else {
                     let page = model.currentPage
                     if page.totalCount == 0 {
                         messageView(
                             systemImage: "magnifyingglass",
-                            text: "Нічого не знайдено за запитом «\(model.query.normalizedSearchText)»."
+                            text: L10n.text(.dictionaryNoResults, ["query": model.query.normalizedSearchText])
                         )
                     } else {
                         pageView(page)
@@ -203,14 +203,16 @@ struct DictionaryWindowView: View {
 
     private var deletionTitle: String {
         let count = pendingDeletion?.entries.count ?? 0
-        return count > 1 ? "Видалити записи (\(count))?" : "Видалити запис?"
+        return count > 1
+            ? L10n.text(.dictionaryDeleteTitleMany, ["count": String(count)])
+            : L10n.text(.dictionaryDeleteTitleOne)
     }
 
     private static func deleteButtonTitle(for entries: [Entry]) -> String {
         if entries.count == 1, let entry = entries.first {
-            return "Видалити «\(entry.word)»"
+            return L10n.text(.dictionaryDeleteOne, ["word": entry.word])
         }
-        return "Видалити вибрані (\(entries.count))"
+        return L10n.text(.dictionaryDeleteSelected, ["count": String(entries.count)])
     }
 
     private func messageView(systemImage: String, text: String) -> some View {
@@ -255,7 +257,7 @@ private struct DisplayLanguagePicker: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        Picker("Мова", selection: $model.displayLanguageSelection) {
+        Picker(L10n.text(.dictionaryLanguagePicker), selection: $model.displayLanguageSelection) {
             Text(model.currentPair?.sourceShortTitle ?? "EN")
                 .tag(String?.none)
             ForEach(model.renderings, id: \.id) { rendering in
@@ -266,7 +268,7 @@ private struct DisplayLanguagePicker: View {
         .pickerStyle(.segmented)
         .labelsHidden()
         .fixedSize()
-        .help("Мова відображення словника")
+        .help(L10n.text(.dictionaryLanguageHelp))
         .disabled(!model.isLoaded)
     }
 }
@@ -291,24 +293,10 @@ private struct BackfillToolbarControl: View {
                         await model.backfillAll()
                     }
                 } label: {
-                    Text("\(texts.backfillTitle) (\(model.backfillableCount))")
+                    Text(verbatim: "\(texts.backfillTitle) (\(model.backfillableCount))")
                 }
-                .help("Запитати переклади для записів без готової версії (пакетами по 15)")
+                .help(L10n.text(.dictionaryBackfillHelp))
             }
-        }
-    }
-}
-
-extension EntrySort {
-    /// Назва в меню сортування.
-    var title: String {
-        switch self {
-        case .dateNewest:
-            return "Спершу нові"
-        case .dateOldest:
-            return "Спершу старі"
-        case .alphabetical:
-            return "За алфавітом"
         }
     }
 }

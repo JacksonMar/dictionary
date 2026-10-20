@@ -5,8 +5,13 @@ import VocabCore
 struct VocabApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        // M9 (D36): мова інтерфейсу — до побудови сцен (заголовки `Window`, `MenuBarExtra`).
+        InterfaceLanguageBootstrap.applyAtLaunch()
+    }
+
     var body: some Scene {
-        MenuBarExtra("Словник", systemImage: "character.book.closed") {
+        MenuBarExtra(L10n.text(.appMenuBarTitle), systemImage: "character.book.closed") {
             MenuBarContentView()
                 .environmentObject(appDelegate.model)
         }

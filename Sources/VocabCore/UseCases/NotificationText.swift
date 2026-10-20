@@ -30,13 +30,24 @@ public enum NotificationText {
 
     /// - Parameter selection: сирий виділений текст запиту (Services). Для `.duplicate` визначає мову, ключ якої
     ///   збігся з виділенням (`duplicateLanguage`); `nil` — як раніше (мова `entry.sourceLanguage`).
-    public static func make(for outcome: AddWordOutcome, selection: String? = nil) -> NotificationContent {
+    /// - Parameter language: мова інтерфейсу (за замовчуванням — `L10n.current`).
+    public static func make(
+        for outcome: AddWordOutcome,
+        selection: String? = nil,
+        language: AppLanguage = L10n.current
+    ) -> NotificationContent {
         switch outcome {
         case .added(let entry):
             let display = selectionDisplay(entry)
             let translations = translationsText(display)
-            let body = translations.isEmpty ? "Додано: \(display.word)" : "Додано: \(display.word) — \(translations)"
-            return NotificationContent(title: "Додано", body: body)
+            let body = translations.isEmpty
+                ? L10n.text(.notificationAddedBody, ["word": display.word], language: language)
+                : L10n.text(
+                    .notificationAddedBodyWithTranslations,
+                    ["word": display.word, "translations": translations],
+                    language: language
+                )
+            return NotificationContent(title: L10n.text(.notificationAddedTitle, language: language), body: body)
 
         case .duplicate(let entry):
             let details: String
@@ -46,54 +57,73 @@ public enum NotificationText {
                 let translations = translationsText(display)
                 details = translations.isEmpty ? display.word : "\(display.word) — \(translations)"
             case .pending, .failed:
-                details = "\(entry.word) — очікує обробки"
+                details = L10n.text(.notificationDuplicatePending, ["word": entry.word], language: language)
             }
-            return NotificationContent(title: "Вже є в словнику", body: details)
+            return NotificationContent(title: L10n.text(.notificationDuplicateTitle, language: language), body: details)
 
         case .queued(let entry, let error):
             guard let error else {
                 // D17: запис уже обробляється паралельним проходом черги.
-                return NotificationContent(title: "Обробляється", body: "Обробляється: \(entry.word)")
+                return NotificationContent(
+                    title: L10n.text(.notificationProcessingTitle, language: language),
+                    body: L10n.text(.notificationProcessingBody, ["word": entry.word], language: language)
+                )
             }
-            let reason: String
+            let reasonKey: L10nKey
             switch error {
             case .offline:
-                reason = "немає мережі, переклад буде додано пізніше"
+                reasonKey = .notificationQueuedOffline
             case .missingAPIKey:
-                reason = "додайте API-ключ у налаштуваннях"
+                reasonKey = .notificationQueuedMissingKey
             case .storage:
                 // Збій запису на диск, а не мережі (не «Помилка мережі»).
-                reason = "не вдалося зберегти запис, повторимо пізніше"
+                reasonKey = .notificationQueuedStorage
             default:
-                reason = "повторимо пізніше"
+                reasonKey = .notificationQueuedLater
             }
-            return NotificationContent(title: "Збережено в чергу", body: "\(entry.word): \(reason)")
+            let reason = L10n.text(reasonKey, language: language)
+            return NotificationContent(
+                title: L10n.text(.notificationQueuedTitle, language: language),
+                body: "\(entry.word): \(reason)"
+            )
 
         case .failed(let entry, let error):
-            return NotificationContent(title: "Не вдалося додати", body: "\(entry.word): \(error.userMessage)")
+            return NotificationContent(
+                title: L10n.text(.notificationFailedTitle, language: language),
+                body: "\(entry.word): \(error.userMessage(in: language))"
+            )
 
         case .rejected(let rejection):
-            return NotificationContent(title: rejectedTitle, body: rejectionText(rejection))
+            return NotificationContent(
+                title: rejectedTitle(in: language),
+                body: rejectionText(rejection, language: language)
+            )
 
         case .storageError(let message):
-            return NotificationContent(title: "Не вдалося додати", body: message)
+            return NotificationContent(title: L10n.text(.notificationFailedTitle, language: language), body: message)
         }
     }
 
-    /// Заголовок сповіщень про відхилене виділення.
-    public static let rejectedTitle = "Не додано"
+    /// Заголовок сповіщень про відхилене виділення (поточною мовою інтерфейсу).
+    public static var rejectedTitle: String {
+        rejectedTitle(in: L10n.current)
+    }
+
+    public static func rejectedTitle(in language: AppLanguage) -> String {
+        L10n.text(.notificationRejectedTitle, language: language)
+    }
 
     /// Текст причини відхилення виділення (D3).
-    public static func rejectionText(_ rejection: SelectionRejection) -> String {
+    public static func rejectionText(_ rejection: SelectionRejection, language: AppLanguage = L10n.current) -> String {
         switch rejection {
         case .empty:
-            return "Нічого не виділено"
+            return L10n.text(.rejectionEmpty, language: language)
         case .tooLong(let max):
-            return "Виділено забагато тексту (макс. \(max) символів)"
+            return L10n.text(.rejectionTooLong, ["max": String(max)], language: language)
         case .tooManyWords(let max):
-            return "Виділено забагато тексту (макс. \(max) слів)"
+            return L10n.text(.rejectionTooManyWords, ["max": String(max)], language: language)
         case .noLetters:
-            return "Виділений текст не містить слів"
+            return L10n.text(.rejectionNoLetters, language: language)
         }
     }
 

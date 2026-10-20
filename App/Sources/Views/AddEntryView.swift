@@ -13,16 +13,16 @@ struct AddEntryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Нове слово")
+                Text(L10n.text(.addTitle))
                     .font(.headline)
                 Spacer()
                 if model.isSpeechAvailable {
                     Button {
                         model.speak(form.word, languagePair: model.languagePairID)
                     } label: {
-                        Label("Озвучити", systemImage: "speaker.wave.2")
+                        Label(L10n.text(.commonSpeak), systemImage: "speaker.wave.2")
                     }
-                    .help("Озвучити слово")
+                    .help(L10n.text(.addSpeakHelp))
                     .disabled(!form.canSave)
                 }
             }
@@ -32,25 +32,25 @@ struct AddEntryView: View {
                     .foregroundColor(.red)
             }
             if model.isClaudeAvailable && !model.hasAPIKey {
-                Text("API-ключ не задано: слово буде збережено в чергу і перекладено після додавання ключа в налаштуваннях.")
+                Text(L10n.text(.addNoKeyHint))
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
                 if model.isClaudeAvailable {
-                    Button("Заповнити через Claude") {
+                    Button(L10n.text(.addFillViaClaude)) {
                         fillViaClaude()
                     }
-                    .help("Перекласти слово через Claude і додати в словник")
+                    .help(L10n.text(.addFillViaClaudeHelp))
                     .disabled(isSaving || !form.canSave)
                 }
                 Spacer()
-                Button("Скасувати") {
+                Button(L10n.text(.commonCancel)) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
-                Button("Додати") {
+                Button(L10n.text(.commonAdd)) {
                     save()
                 }
                 .keyboardShortcut(.defaultAction)

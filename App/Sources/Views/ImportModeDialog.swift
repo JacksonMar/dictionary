@@ -9,41 +9,40 @@ struct ImportModeDialog: ViewModifier {
     func body(content: Content) -> some View {
         content
             .confirmationDialog(
-                "Імпорт словника",
+                L10n.text(.importDialogTitle),
                 isPresented: chooseModeBinding,
                 titleVisibility: .visible
             ) {
                 // Перша кнопка — дія за замовчуванням.
-                Button("Об'єднати") {
+                Button(L10n.text(.importDialogMerge)) {
                     model.selectImportMode(.merge)
                 }
                 .keyboardShortcut(.defaultAction)
-                Button("Замінити…", role: .destructive) {
+                Button(L10n.text(.importDialogReplaceEllipsis), role: .destructive) {
                     model.selectImportMode(.replace)
                 }
-                Button("Скасувати", role: .cancel) {
+                Button(L10n.text(.commonCancel), role: .cancel) {
                     model.cancelImport()
                 }
             } message: {
-                Text("«Об'єднати»: нові записи буде додано, при конфлікті перемагає пізніша зміна.\n"
-                    + "«Замінити»: поточний словник буде повністю замінено вмістом файлу.")
+                Text(L10n.text(.importDialogMessage))
             }
-            .alert("Замінити словник?", isPresented: confirmReplaceBinding) {
-                Button("Замінити", role: .destructive) {
+            .alert(L10n.text(.importDialogConfirmTitle), isPresented: confirmReplaceBinding) {
+                Button(L10n.text(.importDialogReplace), role: .destructive) {
                     model.confirmReplaceImport()
                 }
-                Button("Скасувати", role: .cancel) {
+                Button(L10n.text(.commonCancel), role: .cancel) {
                     model.cancelImport()
                 }
             } message: {
-                Text("Поточний буде збережено в Backups.")
+                Text(L10n.text(.importDialogConfirmMessage))
             }
             .alert(
                 model.transferMessage?.title ?? "",
                 isPresented: transferMessageBinding,
                 presenting: model.transferMessage
             ) { _ in
-                Button("OK") {
+                Button(L10n.text(.commonOk)) {
                     model.transferMessage = nil
                 }
             } message: { message in

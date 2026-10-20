@@ -8,6 +8,22 @@ public enum EntrySort: String, CaseIterable, Sendable {
     case dateOldest
     /// За алфавітом: `TextNormalizer.key(word)`, тай-брейк — `createdAt` (старіші першими).
     case alphabetical
+
+    /// Назва в меню сортування поточною мовою інтерфейсу.
+    public var title: String {
+        title(in: L10n.current)
+    }
+
+    public func title(in language: AppLanguage) -> String {
+        switch self {
+        case .dateNewest:
+            return L10n.text(.sortDateNewest, language: language)
+        case .dateOldest:
+            return L10n.text(.sortDateOldest, language: language)
+        case .alphabetical:
+            return L10n.text(.sortAlphabetical, language: language)
+        }
+    }
 }
 
 /// Пошук і сортування записів (чиста логіка, §6, M5).

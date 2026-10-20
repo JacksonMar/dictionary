@@ -26,8 +26,14 @@ enum WindowID {
     static let settings = "settings"
 }
 
-/// Заголовки сцен `Window` (також — запасний критерій для закриття вікон при запуску, U12).
+/// Заголовки сцен `Window` (також — запасний критерій для закриття вікон при запуску, U12). Мова інтерфейсу
+/// незмінна протягом запуску (D36), тож заголовок, з яким створено сцену, збігається з поточним.
 enum WindowTitle {
-    static let dictionary = "Словник"
-    static let settings = "Налаштування"
+    static var dictionary: String {
+        L10n.text(.windowDictionary)
+    }
+
+    static var settings: String {
+        L10n.text(.windowSettings)
+    }
 }

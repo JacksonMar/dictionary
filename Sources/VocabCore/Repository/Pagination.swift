@@ -70,8 +70,12 @@ public struct EntryPage: Equatable, Sendable {
         number < pageCount
     }
 
-    /// «Сторінка 2 з 5».
+    /// «Page 2 of 5» / «Сторінка 2 з 5» поточною мовою інтерфейсу.
     public var label: String {
-        "Сторінка \(number) з \(pageCount)"
+        label(in: L10n.current)
+    }
+
+    public func label(in language: AppLanguage) -> String {
+        L10n.text(.paginationLabel, ["number": String(number), "count": String(pageCount)], language: language)
     }
 }

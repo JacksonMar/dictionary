@@ -3,7 +3,8 @@ import SwiftUI
 import VocabCore
 
 /// Налаштування: API-ключ (лише в Keychain, значення ніколи не показується), модель Claude (M2),
-/// вигляд — тема й розмір сторінки (M6), автозапуск (M5, `SMAppService`), перенесення словника — експорт/імпорт (M4).
+/// вигляд — тема й розмір сторінки (M6), автозапуск (M5, `SMAppService`), мова інтерфейсу (M9),
+/// перенесення словника — експорт/імпорт (M4).
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var apiKeyInput = ""
@@ -12,62 +13,62 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                SecureField("API-ключ", text: $apiKeyInput)
+                SecureField(L10n.text(.settingsApiKey), text: $apiKeyInput)
                 HStack {
-                    Button("Зберегти ключ") {
+                    Button(L10n.text(.settingsSaveKey)) {
                         if model.saveAPIKey(apiKeyInput) {
                             apiKeyInput = ""
                         }
                     }
                     .disabled(trimmed(apiKeyInput).isEmpty)
                     if model.hasAPIKey {
-                        Button("Видалити ключ", role: .destructive) {
+                        Button(L10n.text(.settingsDeleteKey), role: .destructive) {
                             model.deleteAPIKey()
                         }
                     }
                     Spacer()
                 }
                 Label(
-                    model.hasAPIKey ? "Ключ збережено" : "Ключ не задано",
+                    model.hasAPIKey ? L10n.text(.settingsKeySaved) : L10n.text(.settingsKeyMissing),
                     systemImage: model.hasAPIKey ? "checkmark.seal" : "exclamationmark.triangle"
                 )
                 .foregroundColor(model.hasAPIKey ? .secondary : .orange)
             } header: {
-                Text("Claude API")
+                Text(L10n.text(.settingsSectionClaude))
                     .font(.headline)
             }
 
             Section {
-                TextField("Модель", text: $modelInput)
+                TextField(L10n.text(.settingsModel), text: $modelInput)
                 HStack {
-                    Button("Зберегти модель") {
+                    Button(L10n.text(.settingsSaveModel)) {
                         model.setModel(modelInput)
                         modelInput = model.modelName
                     }
                     .disabled(trimmed(modelInput) == model.modelName)
-                    Button("Типова (\(SettingsDefaults.model))") {
+                    Button(L10n.text(.settingsDefaultModel, ["model": SettingsDefaults.model])) {
                         model.resetModelToDefault()
                         modelInput = model.modelName
                     }
                     .disabled(model.modelName == SettingsDefaults.model)
                     Spacer()
                 }
-                Text("Поточна модель: \(model.modelName)")
+                Text(L10n.text(.settingsCurrentModel, ["model": model.modelName]))
                     .font(.caption)
                     .foregroundColor(.secondary)
             } header: {
-                Text("Модель")
+                Text(L10n.text(.settingsSectionModel))
                     .font(.headline)
             }
 
             Section {
-                Picker("Тема", selection: appearanceBinding) {
+                Picker(L10n.text(.settingsTheme), selection: appearanceBinding) {
                     ForEach(AppAppearance.allCases, id: \.self) { appearance in
                         Text(appearance.title).tag(appearance)
                     }
                 }
                 .pickerStyle(.radioGroup)
-                Picker("Записів на сторінці", selection: pageSizeBinding) {
+                Picker(L10n.text(.settingsPageSize), selection: pageSizeBinding) {
                     ForEach(Pagination.pageSizeOptions, id: \.self) { size in
                         Text(String(size)).tag(size)
                     }
@@ -75,13 +76,13 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .fixedSize()
             } header: {
-                Text("Вигляд")
+                Text(L10n.text(.settingsSectionAppearance))
                     .font(.headline)
             }
 
             if model.isLoginItemAvailable {
                 Section {
-                    Toggle("Запускати при вході в систему", isOn: launchAtLoginBinding)
+                    Toggle(L10n.text(.settingsLaunchAtLogin), isOn: launchAtLoginBinding)
                     loginItemStatus
                     if let error = model.loginItemError {
                         Text(error)
@@ -89,20 +90,46 @@ struct SettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 } header: {
-                    Text("Запуск")
+                    Text(L10n.text(.settingsSectionLaunch))
                         .font(.headline)
                 }
+            }
+
+            Section {
+                Picker(AppLanguage.pickerLabel, selection: interfaceLanguageBinding) {
+                    ForEach(AppLanguage.allCases, id: \.self) { language in
+                        Text(language.nativeName).tag(language)
+                    }
+                }
+                .pickerStyle(.menu)
+                // Мітка дублює заголовок секції; лишається для VoiceOver.
+                .labelsHidden()
+                .fixedSize()
+                if model.interfaceLanguageNeedsRestart {
+                    HStack {
+                        Text(L10n.text(.settingsLanguageRestartHint))
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button(L10n.text(.settingsLanguageRestartNow)) {
+                            model.restartToApplyLanguage()
+                        }
+                    }
+                }
+            } header: {
+                Text(AppLanguage.pickerLabel)
+                    .font(.headline)
             }
 
             if model.isTransferAvailable {
                 Section {
                     HStack {
-                        Button("Експортувати…") {
+                        Button(L10n.text(.settingsExport)) {
                             Task { @MainActor in
                                 await model.exportWithPanel()
                             }
                         }
-                        Button("Імпортувати…") {
+                        Button(L10n.text(.settingsImport)) {
                             model.beginImport()
                         }
                         if model.isTransferring {
@@ -112,13 +139,12 @@ struct SettingsView: View {
                         Spacer()
                     }
                     .disabled(!model.isLoaded || model.isTransferring)
-                    Text("Експорт зберігає словник у файл JSON. Імпорт: «Об'єднати» або «Замінити» "
-                        + "(поточний словник спершу зберігається в Backups).")
+                    Text(L10n.text(.settingsTransferHint))
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } header: {
-                    Text("Перенесення")
+                    Text(L10n.text(.settingsSectionTransfer))
                         .font(.headline)
                 }
             }
@@ -148,6 +174,13 @@ struct SettingsView: View {
         )
     }
 
+    private var interfaceLanguageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { model.interfaceLanguageSelection },
+            set: { model.setInterfaceLanguage($0) }
+        )
+    }
+
     private var pageSizeBinding: Binding<Int> {
         Binding(
             get: { model.pageSize },
@@ -166,15 +199,15 @@ struct SettingsView: View {
     private var loginItemStatus: some View {
         switch model.loginItemState {
         case .requiresApproval?:
-            Text("Потрібен дозвіл: System Settings → General → Login Items (Загальні → Об'єкти входу).")
+            Text(L10n.text(.settingsLoginApproval))
                 .font(.caption)
                 .foregroundColor(.orange)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Відкрити Login Items") {
+            Button(L10n.text(.settingsOpenLoginItems)) {
                 model.openLoginItemsSettings()
             }
         case .notFound?:
-            Text("Система не знайшла застосунок для автозапуску. Перемістіть VocabApp у /Applications і спробуйте ще раз.")
+            Text(L10n.text(.settingsLoginNotFound))
                 .font(.caption)
                 .foregroundColor(.orange)
                 .fixedSize(horizontal: false, vertical: true)

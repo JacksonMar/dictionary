@@ -53,11 +53,11 @@ public enum ImportMerger {
             let current = index.entries[position]
             let skipReason: String?
             if candidate.updatedAt <= current.updatedAt {
-                skipReason = "«\(candidate.word)»: у словнику та сама або новіша версія"
+                skipReason = L10n.text(.importSkipNotNewer, ["word": candidate.word])
             } else if current.status == .ready && candidate.status != .ready {
-                skipReason = "«\(candidate.word)»: імпортований запис ще не оброблено, у словнику — готовий"
+                skipReason = L10n.text(.importSkipNotProcessed, ["word": candidate.word])
             } else if let other = index.position(ofKey: candidateKey), other != position {
-                skipReason = "«\(candidate.word)»: у словнику вже є інший запис з цим словом"
+                skipReason = L10n.text(.importSkipConflict, ["word": candidate.word])
             } else {
                 skipReason = nil
             }
@@ -123,7 +123,7 @@ public enum ImportMerger {
     }
 
     private static func duplicateReason(_ entry: Entry) -> String {
-        "«\(entry.word)»: дублікат у файлі імпорту"
+        L10n.text(.importSkipDuplicateInFile, ["word": entry.word])
     }
 }
 

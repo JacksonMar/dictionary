@@ -99,14 +99,14 @@ public enum LookupResponseParser {
     public static func extract(fromMessagesResponse data: Data) throws -> MessagesResponseText {
         guard let object = try? JSONSerialization.jsonObject(with: data),
               let envelope = object as? [String: Any] else {
-            throw ClaudeError.invalidResponse("відповідь API не є JSON-об'єктом")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseEnvelopeNotObject))
         }
         let stopReason = envelope["stop_reason"] as? String
         if stopReason == "refusal" {
             throw ClaudeError.refused
         }
         guard let content = envelope["content"] as? [Any] else {
-            throw ClaudeError.invalidResponse("немає поля content")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseMissingField, ["name": "content"]))
         }
         let text = content
             .compactMap { $0 as? [String: Any] }
@@ -167,7 +167,7 @@ public enum LookupResponseParser {
             )
         }
         if sourceLanguage != pair.sourceLanguageCode && variants[sourceLanguage] == nil {
-            throw ClaudeError.invalidResponse("немає коректного варіанта мови виділення (\(sourceLanguage))")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseMissingSourceVariant, ["language": sourceLanguage]))
         }
         result.sourceLanguage = sourceLanguage
         result.variants = variants
@@ -198,7 +198,7 @@ public enum LookupResponseParser {
         let partOfSpeech = try requiredString(object, "part_of_speech")
 
         guard let exampleObject = object["example"] as? [String: Any] else {
-            throw ClaudeError.invalidResponse("немає поля example")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseMissingField, ["name": "example"]))
         }
         let exampleSource = try requiredString(exampleObject, "source", path: "example.source")
         let exampleTranslation = try requiredString(exampleObject, "translation", path: "example.translation")
@@ -213,7 +213,7 @@ public enum LookupResponseParser {
             let trimmed = trim(value)
             lemma = trimmed.isEmpty ? word : trimmed
         default:
-            throw ClaudeError.invalidResponse("поле lemma не є рядком")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseFieldNotString, ["name": "lemma"]))
         }
 
         let transcription: String
@@ -223,10 +223,10 @@ public enum LookupResponseParser {
         case nil, is NSNull:
             transcription = ""
         default:
-            throw ClaudeError.invalidResponse("поле transcription не є рядком")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseFieldNotString, ["name": "transcription"]))
         }
         if kind == .word && transcription.isEmpty {
-            throw ClaudeError.invalidResponse("порожнє поле transcription")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseEmptyField, ["name": "transcription"]))
         }
 
         return LookupResult(
@@ -247,12 +247,12 @@ public enum LookupResponseParser {
         guard let start = unfenced.firstIndex(of: "{"),
               let end = unfenced.lastIndex(of: "}"),
               start < end else {
-            throw ClaudeError.invalidResponse("відповідь не містить JSON-об'єкта")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseNoJSONObject))
         }
         let candidate = String(unfenced[start...end])
         guard let object = try? JSONSerialization.jsonObject(with: Data(candidate.utf8)),
               let dictionary = object as? [String: Any] else {
-            throw ClaudeError.invalidResponse("невалідний JSON")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseInvalidJSON))
         }
         return dictionary
     }
@@ -276,29 +276,29 @@ public enum LookupResponseParser {
     private static func requiredString(_ object: [String: Any], _ key: String, path: String? = nil) throws -> String {
         let name = path ?? key
         guard let value = object[key] else {
-            throw ClaudeError.invalidResponse("немає поля \(name)")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseMissingField, ["name": name]))
         }
         guard let string = value as? String else {
-            throw ClaudeError.invalidResponse("поле \(name) не є рядком")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseFieldNotString, ["name": name]))
         }
         let trimmed = trim(string)
         guard !trimmed.isEmpty else {
-            throw ClaudeError.invalidResponse("порожнє поле \(name)")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseEmptyField, ["name": name]))
         }
         return trimmed
     }
 
     private static func validatedTranslations(_ value: Any?) throws -> [String] {
         guard let value else {
-            throw ClaudeError.invalidResponse("немає поля translations")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseMissingField, ["name": "translations"]))
         }
         guard let array = value as? [Any] else {
-            throw ClaudeError.invalidResponse("поле translations не є масивом")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseFieldNotArray, ["name": "translations"]))
         }
         var result: [String] = []
         for element in array {
             guard let string = element as? String else {
-                throw ClaudeError.invalidResponse("translations містить не рядок")
+                throw ClaudeError.invalidResponse(L10n.text(.claudeParseNonStringElement, ["name": "translations"]))
             }
             let trimmed = trim(string)
             if !trimmed.isEmpty && !result.contains(trimmed) {
@@ -306,10 +306,10 @@ public enum LookupResponseParser {
             }
         }
         guard !result.isEmpty else {
-            throw ClaudeError.invalidResponse("порожній список translations")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseEmptyList, ["name": "translations"]))
         }
         guard result.count <= maxTranslations else {
-            throw ClaudeError.invalidResponse("забагато translations")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseTooMany, ["name": "translations"]))
         }
         return result
     }

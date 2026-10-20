@@ -344,7 +344,9 @@ public actor VariantBackfillProcessor {
     }
 
     /// Причина для елемента, якого немає у відповіді.
-    static let missingItemReason = "немає елемента у відповіді"
+    static var missingItemReason: String {
+        L10n.text(.claudeParseMissingItem)
+    }
 
     private func failureUpdates(_ batch: [Candidate], language: RenderingLanguage, error: ClaudeError) -> [VariantUpdate] {
         batch.compactMap { failureUpdate($0, language: language, error: error, message: error.userMessage) }
@@ -378,7 +380,7 @@ public actor VariantBackfillProcessor {
             applied = try await repository.setVariants(updates)
         } catch {
             let reason = (error as? RepositoryError)?.userMessage ?? error.localizedDescription
-            let text = "не вдалося зберегти варіанти: \(reason)"
+            let text = L10n.text(.processingSaveVariantsFailed, ["reason": reason])
             let message = logger?.redact(text) ?? RedactingLogger.redactAPIKeyPattern(text)
             logger?.error("Variant save failed: count=\(updates.count) error=\(message)")
             report.stoppedBy = .storage(message)

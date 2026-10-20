@@ -61,7 +61,7 @@ public enum DictionaryImporter {
             case .success(let entry):
                 entries.append(entry)
             case .failure(let problem):
-                skipped.append("Запис #\(index + 1): \(problem.text)")
+                skipped.append(L10n.text(.importEntryProblem, ["index": String(index + 1), "problem": problem.text]))
             }
         }
         return ParsedImport(entries: entries, skippedReasons: skipped)
@@ -75,11 +75,14 @@ public enum DictionaryImporter {
 
     private static func validateEntry(_ raw: Any, registry: LanguagePairRegistry) -> Result<Entry, EntryProblem> {
         guard let fields = raw as? [String: Any] else {
-            return .failure(EntryProblem(text: "не є об'єктом"))
+            return .failure(EntryProblem(text: L10n.text(.importEntryNotObject)))
         }
 
         func missing(_ name: String) -> Result<Entry, EntryProblem> {
-            .failure(EntryProblem(text: fields[name] == nil ? "відсутнє поле \(name)" : "некоректне поле \(name)"))
+            .failure(EntryProblem(text: L10n.text(
+                fields[name] == nil ? .importEntryMissingField : .importEntryInvalidField,
+                ["name": name]
+            )))
         }
 
         guard let idText = fields["id"] as? String, UUID(uuidString: idText) != nil else {
@@ -111,16 +114,16 @@ public enum DictionaryImporter {
             let data = try JSONSerialization.data(withJSONObject: fields)
             decoded = try JSONCoding.makeDecoder().decode(Entry.self, from: data)
         } catch let DecodingError.typeMismatch(_, context) {
-            return .failure(EntryProblem(text: "некоректне поле \(fieldName(context))"))
+            return .failure(EntryProblem(text: invalidFieldText(context)))
         } catch let DecodingError.valueNotFound(_, context) {
-            return .failure(EntryProblem(text: "некоректне поле \(fieldName(context))"))
+            return .failure(EntryProblem(text: invalidFieldText(context)))
         } catch let DecodingError.keyNotFound(key, context) {
             let path = (context.codingPath.map(\.stringValue) + [key.stringValue]).joined(separator: ".")
-            return .failure(EntryProblem(text: "відсутнє поле \(path)"))
+            return .failure(EntryProblem(text: L10n.text(.importEntryMissingField, ["name": path])))
         } catch let DecodingError.dataCorrupted(context) {
-            return .failure(EntryProblem(text: "некоректне поле \(fieldName(context))"))
+            return .failure(EntryProblem(text: invalidFieldText(context)))
         } catch {
-            return .failure(EntryProblem(text: "некоректний формат запису"))
+            return .failure(EntryProblem(text: L10n.text(.importEntryInvalidFormat)))
         }
         return normalized(decoded, registry: registry)
     }
@@ -132,13 +135,13 @@ public enum DictionaryImporter {
         var result = entry
         result.word = TextNormalizer.clean(entry.word)
         guard !result.word.isEmpty else {
-            return .failure(EntryProblem(text: "некоректне поле word"))
+            return .failure(EntryProblem(text: L10n.text(.importEntryInvalidField, ["name": "word"])))
         }
         result.translations = entry.translations
             .map(collapseWhitespace)
             .filter { !$0.isEmpty }
         if result.status == .ready && result.translations.isEmpty {
-            return .failure(EntryProblem(text: "готовий запис без перекладів"))
+            return .failure(EntryProblem(text: L10n.text(.importEntryReadyWithoutTranslations)))
         }
         result.variants = normalizedVariants(entry.variants)
         if let sourceLanguage = result.sourceLanguage, let pair = registry.pair(id: result.languagePair) {
@@ -180,11 +183,14 @@ public enum DictionaryImporter {
         .joined(separator: " ")
     }
 
-    private static func fieldName(_ context: DecodingError.Context) -> String {
+    /// «некоректне поле <шлях>»; порожній шлях (помилка на рівні самого запису) — «некоректне поле запису».
+    private static func invalidFieldText(_ context: DecodingError.Context) -> String {
         let path = context.codingPath
             .filter { $0.intValue == nil }
             .map(\.stringValue)
             .joined(separator: ".")
-        return path.isEmpty ? "запису" : path
+        return path.isEmpty
+            ? L10n.text(.importEntryInvalidRecordField)
+            : L10n.text(.importEntryInvalidField, ["name": path])
     }
 }

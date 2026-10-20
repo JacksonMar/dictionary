@@ -26,7 +26,7 @@ public enum VariantBatchResponseParser {
             } catch ClaudeError.invalidResponse(let reason) {
                 outcomes[ref] = .invalid(reason)
             } catch {
-                outcomes[ref] = .invalid("невідома помилка розбору")
+                outcomes[ref] = .invalid(L10n.text(.claudeParseUnknown))
             }
         }
         for ref in requested.keys where outcomes[ref] == nil {
@@ -47,12 +47,12 @@ public enum VariantBatchResponseParser {
         guard let start = unfenced.firstIndex(of: "["),
               let end = unfenced.lastIndex(of: "]"),
               start < end else {
-            throw ClaudeError.invalidResponse("відповідь не містить JSON-масиву")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseNoJSONArray))
         }
         let candidate = String(unfenced[start...end])
         guard let object = try? JSONSerialization.jsonObject(with: Data(candidate.utf8)),
               let array = object as? [Any] else {
-            throw ClaudeError.invalidResponse("невалідний JSON-масив")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseInvalidJSONArray))
         }
         return array
     }

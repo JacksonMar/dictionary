@@ -45,6 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings: SettingsStore = isRunningTests
             ? InMemorySettingsStore()
             : UserDefaultsSettingsStore(defaults: .standard)
+        // M9 (D36): мова інтерфейсу — до створення `AppModel` (повторний виклик після `VocabApp.init()`
+        // ідемпотентний; під тестами — `.en` без запису `AppleLanguages`).
+        let languageWriter: PreferredLanguagesWriting? = isRunningTests ? nil : UserDefaultsPreferredLanguagesWriter()
+        InterfaceLanguageBootstrap.apply(settings: settings, writer: languageWriter, isRunningTests: isRunningTests)
         let claude = ClaudeServices.make(
             repository: repository,
             secrets: secrets,
@@ -71,6 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let speech: SpeechSpeaking? = isRunningTests ? nil : SpeechService()
         // Під тестами тема не застосовується до `NSApp` (§11, M6).
         let appearanceApplier: AppearanceApplying? = isRunningTests ? nil : AppearanceController()
+        // M9: під тестами — без перезапуску застосунку.
+        let relauncher: AppRelaunching? = isRunningTests ? nil : ProcessAppRelauncher()
         let model = AppModel(
             repository: repository,
             languagePairID: LanguagePairRegistry.defaultPairID,
@@ -82,7 +88,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // `settings` не передаємо: `AppModel` бере `claude.settings` — одне джерело істини (M6).
             appearanceApplier: appearanceApplier,
             // M7: доповнення варіантів тим самим `ClaudeLookupService` (ключ, модель, логер).
-            variantBackfill: claude.variantBackfill
+            variantBackfill: claude.variantBackfill,
+            // M9: під тестами — без запису `AppleLanguages` і без перезапуску.
+            preferredLanguages: languageWriter,
+            relauncher: relauncher
         )
 
         self.paths = paths
@@ -152,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - U12: вікна, відкриті системою при запуску
 
     /// macOS 13 (без `defaultLaunchBehavior(.suppressed)`, що є лише з macOS 15) може автоматично відкрити першу
-    /// `Window`-сцену при запуску. Закриваємо вікна сцен «Словник»/«Налаштування» одразу, на наступному проході
+    /// `Window`-сцену при запуску. Закриваємо вікна сцен словника/налаштувань одразу, на наступному проході
     /// головної черги і ще раз через 0,3 с (SwiftUI може створити вікно трохи пізніше). Викликається лише зі
     /// старту, тож вікна, які користувач відкриє через меню пізніше, не зачіпаються.
     private func closeScenesOpenedAtLaunch() {

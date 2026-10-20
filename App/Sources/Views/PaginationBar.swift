@@ -1,7 +1,7 @@
 import SwiftUI
 import VocabCore
 
-/// Панель сторінок під таблицею (§11, M6): «‹ Попередня  Сторінка N з M  Наступна ›».
+/// Панель сторінок під таблицею (§11, M6): «‹ Previous  Page N of M  Next ›» (мовою інтерфейсу).
 /// Крайні кнопки вимикаються за `hasPrevious`/`hasNext`; коли сторінка одна, панель не показується (рішення — у
 /// `DictionaryWindowView`).
 struct PaginationBar: View {
@@ -12,20 +12,20 @@ struct PaginationBar: View {
     var body: some View {
         HStack(spacing: 16) {
             Button(action: onPrevious) {
-                Text("‹ Попередня")
+                Text(L10n.text(.paginationPrevious))
             }
             .disabled(!page.hasPrevious)
-            .help("Попередня сторінка")
+            .help(L10n.text(.paginationPreviousHelp))
 
             Text(page.label)
                 .monospacedDigit()
                 .foregroundColor(.secondary)
 
             Button(action: onNext) {
-                Text("Наступна ›")
+                Text(L10n.text(.paginationNext))
             }
             .disabled(!page.hasNext)
-            .help("Наступна сторінка")
+            .help(L10n.text(.paginationNextHelp))
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)

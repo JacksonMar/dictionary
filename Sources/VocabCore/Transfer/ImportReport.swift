@@ -20,7 +20,7 @@ public struct ImportReport: Equatable, Sendable {
     public var added: Int
     public var updated: Int
     public var skipped: Int
-    /// Причини пропуску (україномовні), по одній на пропущений запис.
+    /// Причини пропуску (мовою інтерфейсу на момент імпорту), по одній на пропущений запис.
     public var skippedReasons: [String]
 
     public init(added: Int = 0, updated: Int = 0, skipped: Int = 0, skippedReasons: [String] = []) {
@@ -32,7 +32,15 @@ public struct ImportReport: Equatable, Sendable {
 
     /// «Додано X, оновлено Y, пропущено Z».
     public var summary: String {
-        "Додано \(added), оновлено \(updated), пропущено \(skipped)"
+        summary(in: L10n.current)
+    }
+
+    public func summary(in language: AppLanguage) -> String {
+        L10n.text(
+            .importSummary,
+            ["added": String(added), "updated": String(updated), "skipped": String(skipped)],
+            language: language
+        )
     }
 
     /// Додає пропущені записи з іншого етапу (розбір файлу, згортання дублікатів).

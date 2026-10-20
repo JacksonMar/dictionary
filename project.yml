@@ -2,6 +2,8 @@ name: VocabApp
 options:
   bundleIdPrefix: com.vocabapp
   deploymentTarget: { macOS: "13.0" }
+  # M9 (D38): `*.lproj` у `App/Resources` стають variant group; базова мова — англійська.
+  developmentLanguage: en
 settings:
   base:
     SWIFT_VERSION: "5.0"

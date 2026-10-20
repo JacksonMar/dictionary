@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import VocabCore
 
-/// Обробник Services-пункту «Додати в словник» (§2.3, §11).
+/// Обробник Services-пункту «Add to Dictionary» / «Додати в словник» (§2.3, §11, D38).
 /// `NSMessage = addToDictionary` → AppKit викликає `addToDictionary:userData:error:`.
 ///
 /// `addToDictionary` одразу повертає керування, а обробка йде в `Task`; цей `Task` доступний як
@@ -11,7 +11,9 @@ import VocabCore
 @MainActor
 final class ServicesProvider: NSObject {
     /// Текст для `error.pointee`, якщо в pasteboard нема тексту.
-    static let noTextErrorMessage = "Не вдалося отримати текст"
+    static var noTextErrorMessage: String {
+        L10n.text(.servicesNoText)
+    }
     /// Застарілий тип рядка (`NSStringPboardType`), який деякі застосунки досі кладуть у pasteboard.
     static let legacyStringType = NSPasteboard.PasteboardType("NSStringPboardType")
 

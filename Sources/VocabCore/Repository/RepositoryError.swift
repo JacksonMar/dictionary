@@ -12,15 +12,19 @@ public enum RepositoryError: Error, Equatable {
 }
 
 extension RepositoryError {
-    /// Україномовний опис для UI.
+    /// Опис для UI поточною мовою інтерфейсу (`L10n.current`).
     public var userMessage: String {
+        userMessage(in: L10n.current)
+    }
+
+    public func userMessage(in language: AppLanguage) -> String {
         switch self {
         case .duplicate(let entry):
-            return "«\(entry.word)» вже є в словнику"
+            return L10n.text(.repositoryDuplicate, ["word": entry.word], language: language)
         case .notFound:
-            return "Запис не знайдено"
+            return L10n.text(.repositoryNotFound, language: language)
         case .notLoaded:
-            return "Словник ще не завантажено"
+            return L10n.text(.repositoryNotLoaded, language: language)
         case .storage(let reason):
             return reason
         }

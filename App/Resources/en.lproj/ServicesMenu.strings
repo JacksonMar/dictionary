@@ -1,0 +1,2 @@
+/* Services menu item title (Info.plist NSServices NSMenuItem.default, kept stable so the service stays enabled). */
+"Додати в словник" = "Add to Dictionary";

@@ -9,18 +9,21 @@ public enum StorageError: Error, Equatable {
 }
 
 extension StorageError {
-    /// Україномовний опис для UI.
+    /// Опис для UI поточною мовою інтерфейсу (`L10n.current`).
     public var userMessage: String {
+        userMessage(in: L10n.current)
+    }
+
+    public func userMessage(in language: AppLanguage) -> String {
         switch self {
         case .readFailed(let reason):
-            return "Не вдалося прочитати словник: \(reason)"
+            return L10n.text(.storageReadFailed, ["reason": reason], language: language)
         case .writeFailed(let reason):
-            return "Не вдалося зберегти словник: \(reason)"
+            return L10n.text(.storageWriteFailed, ["reason": reason], language: language)
         case .unsupportedSchemaVersion(let version):
-            return "Файл словника має новішу версію схеми (\(version)), ніж підтримує застосунок. "
-                + "Оновіть застосунок; файл не змінено."
+            return L10n.text(.storageUnsupportedSchema, ["version": String(version)], language: language)
         case .backupFailed(let reason):
-            return "Не вдалося створити резервну копію: \(reason)"
+            return L10n.text(.storageBackupFailed, ["reason": reason], language: language)
         }
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import VocabCore
 
 /// Меню в menu bar (§11, M5): останній результат Services, «Відкрити словник», «Повторити очікувані (N)»,
 /// «Налаштування…», «Вийти».
@@ -18,7 +19,7 @@ struct MenuBarContentView: View {
             Divider()
         }
 
-        Button("Відкрити словник") {
+        Button(L10n.text(.menuOpenDictionary)) {
             show(WindowID.dictionary)
         }
         .keyboardShortcut("d")
@@ -33,18 +34,18 @@ struct MenuBarContentView: View {
         }
 
         if model.isClaudeAvailable && model.isLoaded && !model.hasAPIKey {
-            Button("API-ключ не задано — відкрити налаштування") {
+            Button(L10n.text(.menuNoAPIKey)) {
                 show(WindowID.settings)
             }
         }
 
         Divider()
-        Button("Налаштування…") {
+        Button(L10n.text(.menuSettings)) {
             show(WindowID.settings)
         }
         .keyboardShortcut(",")
         Divider()
-        Button("Вийти") {
+        Button(L10n.text(.menuQuit)) {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q")
@@ -53,7 +54,8 @@ struct MenuBarContentView: View {
     /// «Повторити очікувані (N)»: N — записи `pending` + `failed` (їх обробляє «Повторити всі»).
     private var retryTitle: String {
         let count = model.retryableCount
-        return model.isRetryingAll ? "Повторюємо… (\(count))" : "Повторити очікувані (\(count))"
+        let key: L10nKey = model.isRetryingAll ? .menuRetrying : .menuRetryPending
+        return L10n.text(key, ["count": String(count)])
     }
 
     /// Відкриває (або виводить наперед) вікно сцени й активує застосунок: LSUIElement-застосунок

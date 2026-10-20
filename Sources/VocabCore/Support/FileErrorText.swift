@@ -1,22 +1,26 @@
 import Foundation
 
-/// Україномовний короткий опис помилки файлової системи (для `StorageError`/`ImportError`), замість
-/// англомовного системного `localizedDescription`. Без шляхів до файлів і без крапки в кінці — текст
+/// Короткий опис помилки файлової системи мовою інтерфейсу (для `StorageError`/`ImportError`), замість
+/// системного `localizedDescription`. Без шляхів до файлів і без крапки в кінці — текст
 /// вставляється в більше речення («Не вдалося прочитати файл: файл не знайдено. Словник не змінено.»).
 public enum FileErrorText {
-    public static func describe(_ error: Error) -> String {
+    public static func describe(_ error: Error, language: AppLanguage = L10n.current) -> String {
         if let storage = error as? StorageError {
-            return trimmingTrailingPeriods(storage.userMessage)
+            return trimmingTrailingPeriods(storage.userMessage(in: language))
         }
         let nsError = error as NSError
-        if let text = knownText(domain: nsError.domain, code: nsError.code) {
-            return text
+        if let key = knownKey(domain: nsError.domain, code: nsError.code) {
+            return L10n.text(key, language: language)
         }
         if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
-           let text = knownText(domain: underlying.domain, code: underlying.code) {
-            return text
+           let key = knownKey(domain: underlying.domain, code: underlying.code) {
+            return L10n.text(key, language: language)
         }
-        return "системна помилка (\(nsError.domain), код \(nsError.code))"
+        return L10n.text(
+            .fileSystemError,
+            ["domain": nsError.domain, "code": String(nsError.code)],
+            language: language
+        )
     }
 
     /// Знімає крайні пробіли і крапки в кінці (щоб після вставки в речення не було «..»).
@@ -30,55 +34,55 @@ public enum FileErrorText {
 
     // MARK: - Private
 
-    private static func knownText(domain: String, code: Int) -> String? {
+    private static func knownKey(domain: String, code: Int) -> L10nKey? {
         if domain == NSCocoaErrorDomain {
-            return cocoaText(code)
+            return cocoaKey(code)
         }
         if domain == NSPOSIXErrorDomain {
-            return posixText(code)
+            return posixKey(code)
         }
         return nil
     }
 
-    private static func cocoaText(_ code: Int) -> String? {
+    private static func cocoaKey(_ code: Int) -> L10nKey? {
         switch code {
         case CocoaError.Code.fileNoSuchFile.rawValue, CocoaError.Code.fileReadNoSuchFile.rawValue:
-            return "файл не знайдено"
+            return .fileNotFound
         case CocoaError.Code.fileReadNoPermission.rawValue, CocoaError.Code.fileWriteNoPermission.rawValue:
-            return "немає доступу до файлу"
+            return .fileNoPermission
         case CocoaError.Code.fileWriteOutOfSpace.rawValue:
-            return "недостатньо місця на диску"
+            return .fileOutOfSpace
         case CocoaError.Code.fileWriteVolumeReadOnly.rawValue:
-            return "диск доступний лише для читання"
+            return .fileReadOnlyVolume
         case CocoaError.Code.fileReadCorruptFile.rawValue:
-            return "файл пошкоджений або має невідоме кодування"
+            return .fileCorrupt
         case CocoaError.Code.fileReadTooLarge.rawValue:
-            return "файл завеликий"
+            return .fileTooLarge
         case CocoaError.Code.fileReadInvalidFileName.rawValue, CocoaError.Code.fileWriteInvalidFileName.rawValue:
-            return "некоректне ім'я файлу"
+            return .fileInvalidName
         case CocoaError.Code.fileWriteFileExists.rawValue:
-            return "файл уже існує"
+            return .fileExists
         case CocoaError.Code.fileLocking.rawValue:
-            return "файл заблоковано"
+            return .fileLocked
         default:
             return nil
         }
     }
 
-    private static func posixText(_ code: Int) -> String? {
+    private static func posixKey(_ code: Int) -> L10nKey? {
         switch code {
         case Int(POSIXErrorCode.ENOENT.rawValue), Int(POSIXErrorCode.ENOTDIR.rawValue):
-            return "файл не знайдено"
+            return .fileNotFound
         case Int(POSIXErrorCode.EACCES.rawValue), Int(POSIXErrorCode.EPERM.rawValue):
-            return "немає доступу до файлу"
+            return .fileNoPermission
         case Int(POSIXErrorCode.ENOSPC.rawValue), Int(POSIXErrorCode.EDQUOT.rawValue):
-            return "недостатньо місця на диску"
+            return .fileOutOfSpace
         case Int(POSIXErrorCode.EROFS.rawValue):
-            return "диск доступний лише для читання"
+            return .fileReadOnlyVolume
         case Int(POSIXErrorCode.EISDIR.rawValue):
-            return "вказано каталог, а не файл"
+            return .fileIsDirectory
         case Int(POSIXErrorCode.EEXIST.rawValue):
-            return "файл уже існує"
+            return .fileExists
         default:
             return nil
         }

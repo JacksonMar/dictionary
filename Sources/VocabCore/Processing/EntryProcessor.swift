@@ -17,7 +17,9 @@ public enum ProcessingResult: Equatable, Sendable {
 /// Обробляє ОДИН запис: lookup → оновлення запису в репозиторії (§8.3).
 /// Не тримає стану; лічильник спроб і backoff — у `PendingQueueProcessor`.
 public final class EntryProcessor: Sendable {
-    public static let unknownPairMessage = "Невідома мовна пара"
+    public static var unknownPairMessage: String {
+        L10n.text(.processingUnknownPair)
+    }
 
     private let repository: DictionaryRepository
     private let lookup: WordLookupService
@@ -276,7 +278,7 @@ public final class EntryProcessor: Sendable {
 
     private func saveFailureMessage(_ error: Error) -> String {
         let message = (error as? RepositoryError)?.userMessage ?? error.localizedDescription
-        let text = "не вдалося зберегти запис: \(message)"
+        let text = L10n.text(.processingSaveEntryFailed, ["reason": message])
         // Текст іде в результат/UI — та сама редакція, що й у логах (відомі секрети + шаблон `sk-ant-`).
         return logger?.redact(text) ?? RedactingLogger.redactAPIKeyPattern(text)
     }

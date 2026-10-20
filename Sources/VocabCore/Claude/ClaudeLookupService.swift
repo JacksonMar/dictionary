@@ -74,7 +74,7 @@ public final class ClaudeLookupService: WordLookupService {
             logger.error("Claude response rejected: model=\(configuration.model) error=\(error.logName)")
             throw error
         } catch {
-            throw ClaudeError.invalidResponse("невідома помилка розбору")
+            throw ClaudeError.invalidResponse(L10n.text(.claudeParseUnknown))
         }
     }
 

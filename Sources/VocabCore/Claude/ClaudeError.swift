@@ -35,34 +35,41 @@ public enum ClaudeError: Error, Equatable {
 extension ClaudeError {
     public static let maxErrorMessageLength = 200
 
-    /// Україномовний опис для UI і `Entry.lastError`. Без секретів.
+    /// Опис для UI і `Entry.lastError` поточною мовою інтерфейсу (`L10n.current`). Без секретів.
     public var userMessage: String {
+        userMessage(in: L10n.current)
+    }
+
+    public func userMessage(in language: AppLanguage) -> String {
         switch self {
         case .missingAPIKey:
-            return "Немає API-ключа. Додайте його в налаштуваннях"
+            return L10n.text(.claudeMissingAPIKey, language: language)
         case .offline:
-            return "Немає мережі"
+            return L10n.text(.claudeOffline, language: language)
         case .timeout:
-            return "Claude не відповів вчасно"
+            return L10n.text(.claudeTimeout, language: language)
         case .unauthorized:
-            return "Невірний API-ключ (401)"
+            return L10n.text(.claudeUnauthorized, language: language)
         case .forbidden:
-            return "Доступ заборонено (403): перевірте ключ і баланс"
+            return L10n.text(.claudeForbidden, language: language)
         case .rateLimited:
-            return "Забагато запитів (429)"
+            return L10n.text(.claudeRateLimited, language: language)
         case .server(let status):
-            return "Помилка сервера Claude (\(status))"
+            return L10n.text(.claudeServer, ["status": String(status)], language: language)
         case .badRequest(let status, let message):
-            return message.isEmpty ? "Помилка запиту (\(status))" : "Помилка запиту (\(status)): \(message)"
+            if message.isEmpty {
+                return L10n.text(.claudeBadRequest, ["status": String(status)], language: language)
+            }
+            return L10n.text(.claudeBadRequestMessage, ["status": String(status), "message": message], language: language)
         case .invalidResponse(let reason):
-            return "Невалідна відповідь Claude: \(reason)"
+            return L10n.text(.claudeInvalidResponse, ["reason": reason], language: language)
         case .refused:
-            return "Claude відмовився відповідати"
+            return L10n.text(.claudeRefused, language: language)
         case .transport(let reason):
-            return "Помилка мережі: \(reason)"
+            return L10n.text(.claudeTransport, ["reason": reason], language: language)
         case .storage(let reason):
             // `reason` уже описує збій («не вдалося зберегти запис: …») — без мережевого префікса.
-            guard let first = reason.first else { return "Не вдалося зберегти запис" }
+            guard let first = reason.first else { return L10n.text(.claudeStorageFallback, language: language) }
             return first.uppercased() + reason.dropFirst()
         }
     }

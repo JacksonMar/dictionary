@@ -30,19 +30,19 @@ struct EntryTableView: View {
 
     var body: some View {
         Table(rows, selection: $selection) {
-            TableColumn("Слово") { (row: EntryDisplay) in
+            TableColumn(L10n.text(.tableWord)) { (row: EntryDisplay) in
                 WordCell(row: row)
             }
             .width(min: 80, ideal: 140)
-            TableColumn("Транскрипція") { (row: EntryDisplay) in
+            TableColumn(L10n.text(.tableTranscription)) { (row: EntryDisplay) in
                 TruncatedTextCell(text: row.transcription ?? "", isSecondary: true)
             }
             .width(min: 70, ideal: 120)
-            TableColumn("Переклад") { (row: EntryDisplay) in
+            TableColumn(L10n.text(.tableTranslation)) { (row: EntryDisplay) in
                 TruncatedTextCell(text: row.translations.joined(separator: ", "), isSecondary: false)
             }
             .width(min: 100, ideal: 220)
-            TableColumn("Приклад") { (row: EntryDisplay) in
+            TableColumn(L10n.text(.tableExample)) { (row: EntryDisplay) in
                 ExampleCell(example: row.example)
             }
             .width(min: 100, ideal: 260)
@@ -177,34 +177,34 @@ private struct StatusActionsCell: View {
                     Image(systemName: "speaker.wave.2")
                 }
                 .buttonStyle(.borderless)
-                .help("Озвучити")
-                .accessibilityLabel("Озвучити «\(row.word)»")
+                .help(L10n.text(.commonSpeak))
+                .accessibilityLabel(L10n.text(.tableSpeakWord, ["word": row.word]))
             }
         }
     }
 
     private var entryBadgeTitle: String {
-        row.entry.status == .failed ? "помилка" : "очікує"
+        row.entry.status == .failed ? L10n.text(.tableBadgeFailed) : L10n.text(.tableBadgePending)
     }
 
     private var entryHelpText: String {
         if let lastError = row.entry.lastError, !lastError.isEmpty {
             return lastError
         }
-        return row.entry.status == .failed ? "Помилка обробки" : "Очікує обробки"
+        return row.entry.status == .failed ? L10n.text(.tableHelpFailed) : L10n.text(.tableHelpPending)
     }
 
     private func variantBadgeTitle(_ state: VariantState) -> String {
-        state == .failed ? "помилка" : variantPendingText
+        state == .failed ? L10n.text(.tableBadgeFailed) : variantPendingText
     }
 
     private func variantHelpText(_ state: VariantState) -> String {
         let lastError = row.languageID.flatMap { row.entry.variants?[$0]?.lastError } ?? ""
         if state == .failed {
-            return lastError.isEmpty ? "Помилка доповнення" : lastError
+            return lastError.isEmpty ? L10n.text(.tableHelpVariantFailed) : lastError
         }
         if state == .stale || lastError.isEmpty {
-            return "Буде доповнено при наступному запуску доповнення"
+            return L10n.text(.tableHelpVariantLater)
         }
         return lastError
     }
@@ -225,8 +225,8 @@ private struct RetryButton: View {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.borderless)
-            .help("Повторити запит до Claude")
-            .accessibilityLabel("Повторити «\(word)»")
+            .help(L10n.text(.tableRetryHelp))
+            .accessibilityLabel(L10n.text(.tableRetryWord, ["word": word]))
         }
     }
 }
@@ -276,7 +276,7 @@ private struct EntryContextMenu: View {
 
     var body: some View {
         if let single = singleRow {
-            Button("Редагувати") {
+            Button(L10n.text(.commonEdit)) {
                 onEdit(single.entry)
             }
         }
@@ -291,11 +291,11 @@ private struct EntryContextMenu: View {
             }
         }
         if canSpeak, let single = singleRow, isSpeakable(single) {
-            Button("Озвучити") {
+            Button(L10n.text(.commonSpeak)) {
                 onSpeak(single.word, single)
             }
             if let source = single.example?.source, !source.isEmpty {
-                Button("Озвучити приклад") {
+                Button(L10n.text(.tableMenuSpeakExample)) {
                     onSpeak(source, single)
                 }
             }
@@ -309,11 +309,15 @@ private struct EntryContextMenu: View {
     }
 
     private var retryTitle: String {
-        retryable.count > 1 ? "Повторити (\(retryable.count))" : "Повторити"
+        retryable.count > 1
+            ? L10n.text(.tableMenuRetryCount, ["count": String(retryable.count)])
+            : L10n.text(.commonRetry)
     }
 
     private var deleteTitle: String {
-        rows.count > 1 ? "Видалити (\(rows.count))…" : "Видалити…"
+        rows.count > 1
+            ? L10n.text(.tableMenuDeleteCount, ["count": String(rows.count)])
+            : L10n.text(.tableMenuDelete)
     }
 
     private var singleRow: EntryDisplay? {

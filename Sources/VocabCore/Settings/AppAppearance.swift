@@ -7,15 +7,19 @@ public enum AppAppearance: String, CaseIterable, Sendable {
     case light
     case dark
 
-    /// Назва в налаштуваннях.
+    /// Назва в налаштуваннях поточною мовою інтерфейсу.
     public var title: String {
+        title(in: L10n.current)
+    }
+
+    public func title(in language: AppLanguage) -> String {
         switch self {
         case .system:
-            return "Як у системі"
+            return L10n.text(.appearanceSystem, language: language)
         case .light:
-            return "Світла"
+            return L10n.text(.appearanceLight, language: language)
         case .dark:
-            return "Темна"
+            return L10n.text(.appearanceDark, language: language)
         }
     }
 }

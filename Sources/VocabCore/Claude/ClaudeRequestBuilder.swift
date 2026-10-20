@@ -46,7 +46,7 @@ public enum ClaudeRequestBuilder {
         do {
             data = try encoder.encode(body)
         } catch {
-            throw ClaudeError.transport("Не вдалося сформувати запит")
+            throw ClaudeError.transport(L10n.text(.claudeRequestEncodingFailed))
         }
 
         var request = URLRequest(url: configuration.endpoint)

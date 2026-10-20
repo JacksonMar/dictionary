@@ -1,0 +1,2 @@
+/* Назва пункту меню Services (ключ — NSServices NSMenuItem.default з Info.plist). */
+"Додати в словник" = "Додати в словник";

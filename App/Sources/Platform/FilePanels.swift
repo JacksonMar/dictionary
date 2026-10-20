@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import VocabCore
 
 /// Вибір файлів для експорту/імпорту. Протокол — щоб логіку `AppModel` можна було тестувати без UI.
 @MainActor
@@ -15,8 +16,8 @@ protocol FilePanelPresenting {
 struct SystemFilePanels: FilePanelPresenting {
     func chooseExportDestination(defaultFileName: String) -> URL? {
         let panel = NSSavePanel()
-        panel.title = "Експорт словника"
-        panel.prompt = "Експортувати"
+        panel.title = L10n.text(.panelExportTitle)
+        panel.prompt = L10n.text(.panelExportPrompt)
         panel.nameFieldStringValue = defaultFileName
         panel.allowedContentTypes = [.json]
         panel.canCreateDirectories = true
@@ -29,8 +30,8 @@ struct SystemFilePanels: FilePanelPresenting {
 
     func chooseImportSource() -> URL? {
         let panel = NSOpenPanel()
-        panel.title = "Імпорт словника"
-        panel.prompt = "Імпортувати"
+        panel.title = L10n.text(.panelImportTitle)
+        panel.prompt = L10n.text(.panelImportPrompt)
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
