@@ -1,6 +1,6 @@
 import Foundation
 
-/// Запис словника. Ключі JSON збігаються з іменами властивостей (camelCase, див. REQUIREMENTS.md).
+/// Запис словника. Ключі JSON збігаються з іменами властивостей (camelCase, див. docs/development/REQUIREMENTS.md).
 /// Опційні поля при кодуванні пропускаються, якщо `nil` (`encodeIfPresent`).
 ///
 /// M7: `variants` (додаткові відображення, §3.2) і `sourceLanguage` (мова виділення, D25) — адитивні опційні

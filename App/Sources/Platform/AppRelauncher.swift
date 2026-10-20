@@ -22,7 +22,7 @@ struct ProcessAppRelauncher {
 
     /// `$1` — pid поточного процесу, `$2` — шлях до бандла.
     static let script = """
-        i=0; while kill -0 "$1" 2>/dev/null; do i=$((i+1)); if [ "$i" -ge \(maxWaitIterations) ]; then exit 1; fi; \
+        i=0; while kill -0 "$1" 2>/dev/null; do i=$((i+1)); if [ "$i" -gt \(maxWaitIterations) ]; then exit 1; fi; \
         sleep 0.2; done; /usr/bin/open "$2"
         """
 

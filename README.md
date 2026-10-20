@@ -1,268 +1,181 @@
-# VocabApp — англо-український словник у menu bar macOS
+**English** | [Українська](README.uk.md)
 
-VocabApp — застосунок для macOS, що живе в рядку меню (menu bar) і збирає ваш особистий словник.
-Виділіть англійське слово чи фразу в будь-якій програмі (Safari, Chrome, TextEdit, Notes, PDF…), натисніть
-праву кнопку миші → **Services (Служби) → «Додати в словник»** — і VocabApp:
+<p align="center">
+  <img src="App/Resources/Assets.xcassets/AppIcon.appiconset/icon_128x128@2x.png" width="128" alt="VocabApp icon">
+</p>
 
-1. отримає виділений текст;
-2. запитає Claude API: переклад українською, транскрипцію (IPA), частину мови, приклад речення;
-3. збереже запис у словник (`~/Library/Application Support/VocabApp/dictionary.json`);
-4. покаже системне сповіщення «Додано: run — бігти, керувати» (або «Вже є в словнику»).
+# VocabApp
 
-Також є головне вікно зі списком, пошуком, сортуванням, ручним додаванням, редагуванням, видаленням і озвученням
-слів; черга «очікує обробки» для слів, доданих без мережі; експорт/імпорт словника; автозапуск при вході в систему.
+A macOS menu bar app that builds your personal English–Ukrainian (and Italian) vocabulary from any app in two clicks.
 
-## Вимоги
+## Overview
 
-- macOS 13 Ventura або новіша;
-- Xcode 15 або новіший (Swift 5.9+), Command Line Tools;
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) — генерує `VocabApp.xcodeproj` з `project.yml`;
-- API-ключ Anthropic (Claude) — https://console.anthropic.com/.
+Select a word or phrase anywhere on your Mac — Safari, Chrome, Notes, TextEdit, a PDF — right-click and choose
+**Services → Add to Dictionary**. VocabApp asks Claude for the translation, pronunciation, part of speech and an
+example sentence, saves the entry to a local dictionary and confirms with a system notification. The main window
+lets you browse, search, edit and listen to your words.
 
-Сторонніх залежностей немає.
+## Features
 
-## Збірка
+| Area | What you get |
+|------|--------------|
+| Add from any app | A **Services** context-menu item (“Add to Dictionary”) works in any app that supports macOS Services; words can also be added manually. |
+| Claude-powered entries | Ukrainian translations, IPA transcription, part of speech and an example sentence with translation. Translations and examples are tuned for software development and QA (e.g. `flaky` → “нестабільний”). |
+| English and Italian | Every entry has an English and an Italian rendering, both with Ukrainian translations. An **EN \| IT** switch in the main window toggles between them. You can select an English *or* an Italian word — the language is detected automatically. |
+| Token-efficient | One request per new word (both languages at once); existing entries are filled in with Italian in batches of 15; ready data is cached in the dictionary file and never re-requested automatically. Duplicates are detected in both languages without calling the API. |
+| Dictionary window | Table view with search (word, lemma, translations; case- and diacritic-insensitive), sorting (newest, oldest, alphabetical) and pagination (20/25/30 per page). |
+| Offline-friendly | Words added without a network or an API key wait in a pending queue and are processed automatically later; transient errors are retried, failed entries can be retried manually. |
+| Export and import | Export to JSON; import with **Merge** or **Replace** (the current dictionary is backed up first). |
+| macOS integration | Menu bar app (no Dock icon), launch at login, text-to-speech for words and examples, light/dark/system theme. |
+| Interface language | English or Ukrainian. |
+
+## Requirements
+
+| Requirement | Notes |
+|-------------|-------|
+| macOS 13 Ventura or later | |
+| Xcode 15 or later | The full Xcode app is required; Command Line Tools alone are **not** enough. |
+| [Homebrew](https://brew.sh) | Used to install XcodeGen. |
+| [XcodeGen](https://github.com/yonaskolb/XcodeGen) | Generates `VocabApp.xcodeproj` from `project.yml`. |
+| Anthropic API key | Create one at [console.anthropic.com](https://console.anthropic.com/). |
+| Git | To clone and update the repository. |
+
+There are no third-party dependencies.
+
+## Installation
 
 ```sh
-brew install xcodegen          # один раз
-git clone <url-репозиторію> dictionary && cd dictionary
-xcodegen generate              # створює VocabApp.xcodeproj (у git не зберігається)
-xcodebuild -scheme VocabApp -configuration Release -derivedDataPath build build
-```
-
-Результат: `build/Build/Products/Release/VocabApp.app`.
-
-**Підпис.** Застосунок підписується локально, ad-hoc (`CODE_SIGN_IDENTITY = "-"` у `project.yml`); облікового
-запису розробника Apple і App Store не потрібно. Наслідки ad-hoc підпису:
-
-- після кожної перезбірки змінюється підпис, тому macOS може один раз запитати доступ до елемента Keychain з
-  API-ключем — натисніть «Завжди дозволяти» (або просто введіть ключ ще раз у Налаштуваннях);
-- якщо `.app` скопійовано з іншого комп'ютера (завантажено, передано через AirDrop), Gatekeeper може заблокувати
-  запуск: ПКМ на застосунку → «Відкрити», або `xattr -dr com.apple.quarantine /Applications/VocabApp.app`.
-
-## Встановлення
-
-```sh
-# вийдіть з VocabApp, якщо він запущений (menu bar → «Вийти»)
-rm -rf /Applications/VocabApp.app
+git clone https://github.com/JacksonMar/dictionary.git VocabApp
+cd VocabApp
+brew install xcodegen
+xcodegen generate
+xcodebuild -project VocabApp.xcodeproj -scheme VocabApp -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- build
+osascript -e 'quit app "VocabApp"' 2>/dev/null; rm -rf /Applications/VocabApp.app
 cp -R build/Build/Products/Release/VocabApp.app /Applications/
+/System/Library/CoreServices/pbs -update
 open /Applications/VocabApp.app
 ```
 
-Встановлюйте саме в `/Applications` (або `~/Applications`): система шукає Services і login items у
-встановлених застосунках; запуск прямо з `build/` може не зареєструвати сервіс і автозапуск.
+The app is signed locally with an ad-hoc signature (`CODE_SIGN_IDENTITY=-`); no Apple Developer account is
+needed. Install it in `/Applications`: macOS registers Services and login items only for installed apps.
 
-## Перший запуск
-
-1. Запустіть `/Applications/VocabApp.app`. У menu bar з'явиться іконка книжки; іконки в Dock і вікон немає —
-   це нормально (застосунок працює як menu bar app).
-2. Дозвольте сповіщення в системному діалозі (запит з'являється один раз, при першому запуску). Якщо
-   відмовили — результат останнього додавання все одно видно в меню VocabApp; увімкнути сповіщення можна в
-   System Settings → Notifications → VocabApp.
-3. Menu bar → **«Налаштування…»** → введіть API-ключ Anthropic → «Зберегти ключ». Ключ зберігається лише в
-   Keychain (див. «Приватність»). Там само можна змінити модель Claude (за замовчуванням `claude-haiku-5-5`).
-
-## Активація пункту «Додати в словник» у Services
-
-1. Після першого запуску з `/Applications` оновіть реєстр сервісів:
-
-   ```sh
-   /System/Library/CoreServices/pbs -update
-   ```
-
-2. Відкрийте **System Settings → Keyboard → Keyboard Shortcuts… → Services → Text** і переконайтеся, що
-   пункт **«Додати в словник»** увімкнений (галочка). За бажанням призначте йому сполучення клавіш.
-3. Виділіть слово в Safari / TextEdit → ПКМ → **Services → «Додати в словник»**
-   (у деяких програмах пункт є лише в меню програми: *Назва програми → Services*).
-
-### Якщо пункту немає
-
-- Переконайтеся, що застосунок лежить у `/Applications` і був запущений хоча б раз.
-- Скиньте й оновіть кеш сервісів, потім перезапустіть програму, у якій виділяєте текст:
-
-  ```sh
-  /System/Library/CoreServices/pbs -flush
-  /System/Library/CoreServices/pbs -update
-  ```
-
-- Перевірте, що сервіс зареєстровано: `/System/Library/CoreServices/pbs -dump | grep -A8 VocabApp`
-  (у виводі мають бути `NSPortName = VocabApp` і шлях до `VocabApp.app`). Шукайте саме за `VocabApp`:
-  кирилиця в дампі екранована (`"\U0414\U043e\U0434…"`), тому `grep "Додати в словник"` нічого не знаходить.
-- Якщо після цього пункт усе ще відсутній — вийдіть з облікового запису macOS і увійдіть знову.
-- Пункт показується лише коли виділено текст; для PDF і деяких браузерів спробуйте меню програми → Services.
-- Сповіщення не з'являються — перевірте System Settings → Notifications → VocabApp; останній результат
-  видно в меню VocabApp у menu bar.
-- Логи: `log show --last 30m --predicate 'subsystem == "com.vocabapp.VocabApp"' --info`
-  (API-ключ у логи ніколи не потрапляє). Категорії: `claude` — запити до Claude, ключ і черга (рядки
-  `Queue run started: trigger=…` показують, що запустило обробку: `manual`, `retryAll`, `startup`, `network`,
-  `keySaved`, `modelChanged`, `imported`, `due`); `notifications` — сповіщення
-  (`--predicate 'subsystem == "com.vocabapp.VocabApp" AND category == "notifications"'`).
-
-## Використання
-
-- **Додавання через Services** — як описано вище. Слово (до 8 слів і 120 символів; фраза обробляється як фраза)
-  спершу зберігається зі статусом «очікує обробки», потім заповнюється відповіддю Claude. Повторне додавання
-  того самого слова дає сповіщення «Вже є в словнику».
-- **Menu bar**: останній результат додавання, «Відкрити словник», «Повторити очікувані (N)» (якщо є слова,
-  що чекають обробки або з помилкою), «Налаштування…», «Вийти».
-- **Головне вікно** («Відкрити словник»):
-  - **таблиця**: один рядок на запис, колонки «Слово», «Транскрипція», «Переклад», «Приклад» і вузька колонка
-    статусу/дій; ширину колонок можна змінювати, повний текст — у підказці при наведенні; можна виділити
-    кілька рядків (⌘/⇧-клік);
-  - **сторінки**: по 25 записів (20 / 25 / 30 — Налаштування → «Вигляд»); унизу «‹ Попередня  Сторінка N з M
-    Наступна ›» (прихована, якщо сторінка одна). Пошук і сортування діють на весь словник, а зміна пошуку,
-    сортування чи розміру сторінки повертає на першу сторінку;
-  - **пошук** у полі пошуку на панелі інструментів — за словом, лемою і перекладами, без урахування регістру
-    й діакритики (наприклад, «біг» знайде `run — бігти`);
-  - **сортування** — меню на панелі: «Спершу нові», «Спершу старі», «За алфавітом»;
-  - **озвучення** — кнопка з динаміком у колонці дій (англійський голос системи; у контекстному меню рядка також
-    «Озвучити приклад»). Якщо англійського голосу немає, додайте його: System Settings → Accessibility →
-    Spoken Content → System Voice → Manage Voices;
-  - «+» — ручне додавання (усі поля вручну або «Заповнити через Claude»); подвійний клік по рядку — редагування;
-    контекстне меню (ПКМ) — «Редагувати», «Повторити», «Озвучити», «Видалити…» (з підтвердженням);
-  - позначки «очікує обробки» / «помилка» і кнопка «Повторити»; «Повторити всі» на панелі інструментів.
-- **Без мережі** слово потрапляє в чергу й обробляється автоматично, щойно мережа з'явиться (або кнопкою
-  «Повторити»). Тимчасові помилки (429, 5xx, таймаут) повторюються до 5 разів; невірний ключ (401) чи
-  невалідна відповідь — одразу «помилка» з кнопкою «Повторити».
-- **Тема**: Налаштування → «Вигляд» → «Як у системі» (за замовчуванням) / «Світла» / «Темна»; діє одразу на
-  всі вікна застосунку й зберігається після перезапуску.
-- **Автозапуск**: Налаштування → «Запускати при вході в систему». Якщо macOS вимагає підтвердження, з'явиться
-  кнопка «Відкрити Login Items» — дозвольте VocabApp у System Settings → General → Login Items.
-  Автозапуск надійно працює лише для застосунку в `/Applications`.
-
-## Італійська
-
-- **Перемикач EN | IT** — по центру панелі інструментів головного вікна. «EN» показує англійські слова, «IT» —
-  італійські відповідники тих самих записів (слово, IPA, українські переклади, приклад італійською). Вибраний
-  режим зберігається після перезапуску; перемикання повертає на першу сторінку. Пошук і сортування «За
-  алфавітом» у режимі IT працюють за італійськими словами.
-- **Автовизначення мови**: через «Додати в словник» можна виділити англійське **або** італійське слово (`casa`,
-  `perché`, `l'acqua`). Один запит до Claude визначає мову й одразу повертає обидві версії. Для італійського
-  виділення англійське слово запису — відповідник від Claude, а виділене слово зберігається в італійській версії
-  (у файлі — `"sourceLanguage": "it"`). Слово, що існує в обох мовах (`come`, `no`), вважається англійським.
-- **Дублікати** перевіряються в обох мовах: якщо `casa` уже є як італійська версія запису `house`, повторне
-  додавання `casa` чи `house` дає «Вже є в словнику» без запиту до Claude.
-- **Коли витрачаються токени**:
-  - нове слово — **рівно 1 запит** (англійська й італійська разом); якщо італійська частина відповіді
-    некоректна, окремого повтору нема — запис доповниться пакетом;
-  - старі записи без італійської версії доповнюються **лише в режимі IT** (при перемиканні на IT, старті в режимі
-    IT, відновленні мережі, збереженні ключа) пакетами по 15: `ceil(n / 15)` запитів на `n` записів. Після
-    одного успішного проходу повторних запитів нема — дані зберігаються в `dictionary.json` (`variants.it`);
-  - рядок без готової італійської версії показує англійське слово сірим і позначку «італійська версія очікує»;
-    кнопка «Доповнити італійською (N)» на панелі запускає доповнення вручну (разом з тими, що завершились
-    помилкою);
-  - «Оновити італійський переклад» (контекстне меню рядка або редактор у режимі IT) — **лише вручну**, 1 запит
-    для одного запису; готові італійські версії інакше ніколи не запитуються повторно.
-- Редагуються лише англійські поля; італійські в редакторі показуються лише для читання. Якщо змінити
-  англійське слово, італійська версія вважається застарілою й доповнюється наступним проходом.
-- Озвучення в режимі IT — італійським голосом (`it-IT`); якщо його немає, додайте: System Settings →
-  Accessibility → Spoken Content → System Voice → Manage Voices.
-- Формат файлу лишається `schemaVersion: 1`; італійські дані — необов'язкові поля `variants` і `sourceLanguage`.
-  Старіші версії застосунку читають такий файл, але при збереженні втрачають італійські дані (їх буде доповнено
-  знову).
-
-## IT/QA-контекст
-
-Переклади й приклади завжди орієнтовані на розробку ПЗ і QA (налаштування немає). Якщо слово має IT/QA-значення,
-воно йде першим у перекладах (`flaky` → «нестабільний», `smoke` → «димовий (тест)»), а приклад — про баг-репорти,
-тести, CI, код-рев'ю чи релізи; інакше — звичайні переклади й побутовий приклад (`apple`). Діє для нових слів і
-для італійських версій, що доповнюються пакетом. Наявні записи **не** перекладаються повторно ні автоматично, ні
-вручну; кількість запитів і формат файлу не змінюються.
-
-## Перенесення словника на інший Mac
-
-**Експорт / імпорт (рекомендовано):**
-
-1. На старому Mac: Налаштування → «Перенесення» → **«Експортувати…»** → збережіть `dictionary.json`.
-2. Перенесіть файл (AirDrop, флешка, хмара).
-3. На новому Mac (після встановлення VocabApp): Налаштування → **«Імпортувати…»** → виберіть файл → режим:
-   - **«Об'єднати»** (за замовчуванням): нові записи додаються; якщо слово вже є (той самий `id` або те саме
-     слово в тій самій мовній парі), перемагає запис з пізнішою датою зміни (`updatedAt`);
-   - **«Замінити…»**: поточний словник повністю замінюється вмістом файлу — після підтвердження; перед заміною
-     поточний словник автоматично зберігається в
-     `~/Library/Application Support/VocabApp/Backups/dictionary-backup-<дата>-<час>.json`
-     (зберігаються 10 останніх копій).
-4. Після імпорту з'явиться звіт «Додано X, оновлено Y, пропущено Z» з причинами пропуску. Невалідний файл
-   (не JSON, інша `schemaVersion`, немає `entries`) словник не змінює.
-
-**Копіювання файлу вручну:** вийдіть з VocabApp на обох комп'ютерах і скопіюйте
-`~/Library/Application Support/VocabApp/dictionary.json` у той самий каталог на новому Mac (наявний файл там
-буде замінено).
-
-**API-ключ не переноситься** (він не потрапляє ні в експорт, ні в `dictionary.json`): введіть його в
-Налаштуваннях на новому Mac ще раз. Слова зі статусом «очікує обробки» оброблятимуться після цього автоматично.
-
-## Тести
-
-### Швидка перевірка на Mac (з нуля)
-
-Склонувати гілку, згенерувати проєкт і прогнати всі тести застосунку:
+### Updating
 
 ```sh
-git clone -b claude/macos-dictionary-en-uk-context-obp1i3 https://github.com/JacksonMar/dictionary.git
-cd dictionary
-brew install xcodegen
+cd VocabApp
+git pull
 xcodegen generate
-xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-
+xcodebuild -project VocabApp.xcodeproj -scheme VocabApp -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY=- build
+osascript -e 'quit app "VocabApp"' 2>/dev/null; rm -rf /Applications/VocabApp.app
+cp -R build/Build/Products/Release/VocabApp.app /Applications/
+/System/Library/CoreServices/pbs -update
+open /Applications/VocabApp.app
 ```
 
-Очікуваний результат у кінці виводу: `Executed 113 tests, with 0 failures` і `** TEST SUCCEEDED **`.
+Updating replaces only the app bundle. Your dictionary (`~/Library/Application Support/VocabApp`) and the API key
+in the Keychain are never touched.
 
-Звідки число: це рядок `Executed N tests` з виводу `xcodebuild test` (тести застосунку, `App/Tests`); його ж можна
-порахувати без збірки — `grep -rh "func test" App/Tests | wc -l`. 113 — стан після M9 (97 після M7/M8 + 16 `InterfaceLanguageTests`;
-97 = 86 після M6 + 11 `AppModelM7Tests`); число пораховано `grep`, підтвердити фактичним `Executed N tests` з CI/Mac.
+## First launch and setup
 
-### Окремо ядро і застосунок
+1. Open VocabApp. A book icon appears in the menu bar; there is no Dock icon or window — this is expected.
+2. Allow notifications when prompted (you can change this later in System Settings → Notifications → VocabApp).
+3. Menu bar icon → **Settings…** → enter your Anthropic API key → **Save Key**. The key is stored only in the
+   macOS Keychain. The Claude model can be changed in the same window (default: `claude-haiku-5-5`).
+4. Interface language: English by default. Change it in Settings → **Interface language / Мова інтерфейсу**; the
+   change takes effect after a restart (use **Restart Now**).
+5. Enable the service: **System Settings → Keyboard → Keyboard Shortcuts… → Services → Text** and make sure
+   **Add to Dictionary** (or **Додати в словник**) is checked. You can also assign a keyboard shortcut there.
+   The Services menu title follows the macOS system language, not the app's interface language.
 
-`swift test` на macOS потребує **повного Xcode.app** (у ньому є XCTest): `xcode-select -p` має показувати
-`/Applications/Xcode.app/Contents/Developer`. З самими Command Line Tools (`/Library/Developer/CommandLineTools`)
-збірка тестів падає з `unable to resolve module dependency: 'XCTest'` — встановіть Xcode і виконайте
-`sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` (або запускайте тести ядра в Docker, як нижче).
+## Usage
+
+- **Add a word from any app:** select a word or phrase (up to 8 words / 120 characters) → right-click →
+  **Services → Add to Dictionary**. A notification confirms the result, e.g. “Added: run — бігти, керувати”, or
+  tells you the word is already in the dictionary. In some apps the item is only in the app menu → *Services*.
+- **Browse:** menu bar → **Open Dictionary**. Search, sort and page through entries; double-click a row to edit;
+  use the context menu to speak, retry or delete.
+- **EN | IT switch:** in the toolbar of the main window. **IT** shows the Italian rendering of each entry (word,
+  IPA, Ukrainian translations, Italian example). Search and alphabetical sorting follow the selected language.
+- **Manual add:** the **+** button in the toolbar; fill in the fields yourself or use **Fill In with Claude**.
+- **Pending and retry:** entries waiting for processing or failed are marked in the table; use **Retry** on a row,
+  **Retry All** in the toolbar, or **Retry Pending** in the menu bar.
+
+## Data and privacy
+
+| Item | Location / behavior |
+|------|---------------------|
+| Dictionary | `~/Library/Application Support/VocabApp/dictionary.json` (JSON, `schemaVersion: 1`) |
+| Backups | `~/Library/Application Support/VocabApp/Backups/` (the 10 most recent copies are kept) |
+| API key | Only in the macOS Keychain (service `com.vocabapp.VocabApp`, account `anthropic-api-key`). Never written to code, logs, `UserDefaults`, the dictionary file or exports. |
+| Network | Only the selected word or phrase (with the prompt) is sent to the Anthropic API. Nothing else leaves your Mac. |
+
+## Moving to another Mac
+
+1. On the old Mac: Settings → **Transfer** → **Export…** and save the JSON file.
+2. Copy the file to the new Mac and install VocabApp there.
+3. On the new Mac: Settings → **Import…** → choose the file and a mode:
+
+| Mode | Behavior |
+|------|----------|
+| **Merge** (default) | New entries are added; if a word already exists, the more recently changed entry wins. |
+| **Replace…** | The current dictionary is replaced by the file after confirmation; it is first saved to `~/Library/Application Support/VocabApp/Backups/`. |
+
+An invalid file never changes the dictionary. The API key is **not** exported — enter it again in Settings on the
+new Mac; pending words are then processed automatically.
+
+## Uninstall
 
 ```sh
-# Ядро (VocabCore): macOS (потрібен Xcode.app) або Linux (Docker)
+osascript -e 'quit app "VocabApp"' 2>/dev/null
+rm -rf /Applications/VocabApp.app
+# Optional: delete your dictionary and backups
+rm -rf ~/Library/Application\ Support/VocabApp
+# Optional: delete the API key from the Keychain
+security delete-generic-password -s com.vocabapp.VocabApp -a anthropic-api-key
+```
+
+If launch at login was enabled, turn it off in Settings before uninstalling, or remove VocabApp in
+System Settings → General → Login Items.
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| “Add to Dictionary” is not in the Services menu | Make sure the app is in `/Applications` and has been launched once. Run `/System/Library/CoreServices/pbs -flush` and `/System/Library/CoreServices/pbs -update`, enable the item in System Settings → Keyboard → Keyboard Shortcuts… → Services → Text, and restart the app where you select text. If it is still missing, log out and log back in. |
+| macOS refuses to open the app (Gatekeeper) | Happens when the `.app` was copied from another computer: `xattr -dr com.apple.quarantine /Applications/VocabApp.app`, or right-click the app → Open. |
+| Keychain asks for access after a rebuild | Each ad-hoc build has a new signature. Click **Always Allow**, or re-enter the key in Settings. |
+| No notifications | Check System Settings → Notifications → VocabApp. The last result is also shown in the menu bar menu. |
+| No speech | Add an English or Italian voice: System Settings → Accessibility → Spoken Content → System Voice → Manage Voices. |
+| `swift test` fails with `unable to resolve module dependency: 'XCTest'` | Install the full Xcode and run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. |
+
+Logs (the API key is never logged):
+`log show --last 30m --predicate 'subsystem == "com.vocabapp.VocabApp"' --info`
+
+## Development
+
+```
+Package.swift          VocabCore Swift package (Foundation only; builds on macOS and Linux)
+project.yml            XcodeGen project description
+Sources/VocabCore/     Core: model, storage, Claude API client, queue, import/export, localization
+Tests/VocabCoreTests/  Core tests
+App/                   macOS app: SwiftUI/AppKit UI, Services provider, Keychain, notifications
+App/Tests/             App tests (macOS only)
+docs/development/      Architecture, requirements, progress and manual test checklists
+```
+
+```sh
+# Core tests (macOS with full Xcode, or Linux via Docker)
 swift test
 docker run --rm -v "$PWD":/w -w /w swift:6.0-noble swift test
 
-# Застосунок (VocabAppTests, лише macOS)
-xcodegen generate
-xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' \
-  -derivedDataPath build CODE_SIGN_IDENTITY=-
+# App tests (macOS)
+xcodegen generate && xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp \
+  -destination 'platform=macOS' -derivedDataPath build CODE_SIGN_IDENTITY=-
 ```
 
-Тести не роблять мережевих запитів і не чіпають ваш справжній словник (працюють у тимчасовому каталозі).
-Те, що можна перевірити лише на реальному Mac (Services у браузерах, сповіщення, автозапуск, озвучення),
-описано в ручних чеклістах [`docs/manual-tests/`](docs/manual-tests/). CI: `.github/workflows/ci.yml`.
+Tests make no network requests and never touch your real dictionary. Contributor documentation lives in
+[`docs/development/`](docs/development/).
 
-## Приватність
+## License
 
-- API-ключ зберігається **лише** в Keychain (служба `com.vocabapp.VocabApp`); його немає в коді, логах,
-  `UserDefaults`, `dictionary.json` і файлах експорту. Перевірити:
-  `security find-generic-password -s com.vocabapp.VocabApp` (ключ є лише там),
-  `grep -c sk-ant ~/Library/Application\ Support/VocabApp/dictionary.json` → `0`.
-- На сервер Anthropic надсилається лише виділений текст (слово/фраза) і промт.
-- Словник зберігається локально у `~/Library/Application Support/VocabApp/`.
-
-## Структура проєкту
-
-```
-Package.swift            Swift-пакет VocabCore (ядро, лише Foundation; збирається на macOS і Linux)
-project.yml              опис Xcode-проєкту для XcodeGen
-Sources/VocabCore/       модель даних, мовні пари, нормалізація, сховище (атомарний запис, бекапи),
-                         репозиторій, пошук/сортування (EntryQuery), Claude API, черга pending,
-                         use-case Services і тексти сповіщень, експорт/імпорт, італійські версії
-                         записів (комбінований запит, пакетне доповнення)
-Tests/VocabCoreTests/    тести ядра
-App/Info.plist           Info.plist застосунку (LSUIElement, NSServices)
-App/Sources/             SwiftUI/AppKit: menu bar, вікна, Settings, Services-провайдер, Keychain,
-                         сповіщення, автозапуск (SMAppService), озвучення (AVSpeechSynthesizer), мережа
-App/Tests/               тести застосунку (лише macOS)
-docs/                    вимоги і ручні чеклісти
-```
-
-## Документація
-
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — архітектура, формати, модель помилок, рішення, план етапів;
-- [`PROGRESS.md`](PROGRESS.md) — стан етапів, відкриті питання щодо macOS API;
-- [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md) — вимоги;
-- [`docs/manual-tests/`](docs/manual-tests/) — ручні перевірки M1–M8.
+[MIT](LICENSE)

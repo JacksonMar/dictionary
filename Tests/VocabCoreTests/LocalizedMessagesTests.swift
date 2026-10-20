@@ -68,7 +68,7 @@ final class LocalizedMessagesTests: XCTestCase {
         let rejections: [(SelectionRejection, String)] = [
             (.empty, "Nothing is selected"),
             (.tooLong(max: 100), "Too much text selected (max 100 characters)"),
-            (.tooManyWords(max: 5), "Too much text selected (max 5 words)"),
+            (.tooManyWords(max: 5), "Too many words selected (max 5)"),
             (.noLetters, "The selected text contains no words"),
         ]
         for (rejection, body) in rejections {
