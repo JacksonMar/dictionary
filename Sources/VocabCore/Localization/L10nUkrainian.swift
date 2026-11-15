@@ -248,6 +248,12 @@ enum L10nUkrainian {
         case .panelExportPrompt: return "Експортувати"
         case .panelImportTitle: return "Імпорт словника"
         case .panelImportPrompt: return "Імпортувати"
+        case .mobileListTitle: return "Словник"
+        case .mobileLoading: return "Завантаження словника…"
+        case .mobileEmptyTitle: return "Слів поки немає"
+        case .mobileEmptyMessage: return "Тут з'являться слова, які ви додасте або імпортуєте."
+        case .mobileNoResultsTitle: return "Нічого не знайдено"
+        case .mobileLoadErrorTitle: return "Не вдалося відкрити словник"
         }
     }
 }

@@ -24,6 +24,10 @@ public enum ProcessingTrigger: String, CaseIterable, Sendable {
     case variantBackfill
     /// M7: «Оновити італійський переклад» для одного запису.
     case variantRefresh
+    /// iOS (IOS_PLAN §3.1): застосунок повернувся на передній план (`scenePhase == .active`).
+    case foreground
+    /// iOS (IOS_PLAN §3.3): після інжесту inbox (слова з «Поділитися»).
+    case inbox
 }
 
 /// Рядки логу навколо викликів черги (§8.3, M6). Лише тригер, UUID і лічильники — без слова, тексту помилки, ключа.

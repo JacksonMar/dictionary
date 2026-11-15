@@ -53,7 +53,7 @@ targets:
       base: { GENERATE_INFOPLIST_FILE: YES, PRODUCT_BUNDLE_IDENTIFIER: com.vocabapp.VocabAppTests }
     dependencies:
       - target: VocabApp          # hosted tests: TEST_HOST = VocabApp.app
-  # MARK: iOS (I0 spike: no VocabCore dependency yet; the spike code is replaced in I1a)
+  # MARK: iOS (I1a: the app and its tests depend on VocabCore; the extensions stay core-free)
   VocabMobile:
     type: application
     platform: iOS
@@ -71,6 +71,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Mobile/VocabMobile.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
+      - package: VocabCore
+        product: VocabCore
       - target: VocabShare
         embed: true
       - target: VocabWidget
@@ -120,7 +122,11 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAB_BUNDLE_ID_PREFIX).VocabMobileTests"
     dependencies:
-      - target: VocabMobile       # hosted tests: TEST_HOST = VocabMobile.app
+      # hosted tests: TEST_HOST = VocabMobile.app. VocabCore is NOT linked here (same as VocabAppTests,
+      # ARCHITECTURE §2.2): the module comes from BUILT_PRODUCTS_DIR and the symbols from the host app; linking
+      # the static product twice duplicates the library code (two copies of L10n state / type metadata).
+      # If Xcode reports `No such module 'VocabCore'`, add `- package: VocabCore` here.
+      - target: VocabMobile
 schemes:
   VocabApp:
     build:

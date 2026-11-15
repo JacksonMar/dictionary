@@ -151,6 +151,16 @@ final class HardcodedStringsScanTests: XCTestCase {
             .sorted { $0.path < $1.path }
     }
 
+    /// `Extensions/<name>/Sources` для кожного розширення (Share, Widget, …).
+    static func extensionSourceDirectories(root: URL) -> [URL] {
+        let extensions = root.appendingPathComponent("Extensions", isDirectory: true)
+        let children = (try? FileManager.default.contentsOfDirectory(at: extensions, includingPropertiesForKeys: nil)) ?? []
+        return children
+            .map { $0.appendingPathComponent("Sources", isDirectory: true) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .sorted { $0.path < $1.path }
+    }
+
     static func isExcludedDirectory(_ url: URL) -> Bool {
         url.pathComponents.contains("Localization") || url.pathComponents.contains("Languages")
     }
@@ -165,10 +175,16 @@ final class HardcodedStringsScanTests: XCTestCase {
         let appFiles = Self.swiftFiles(under: app)
         XCTAssertGreaterThan(coreFiles.count, 20, "core sources not found at \(core.path)")
         XCTAssertGreaterThan(appFiles.count, 10, "app sources not found at \(app.path)")
+        // iOS (IOS_PLAN §3.4, I1a): застосунок і розширення теж без кириличних літералів.
+        let mobile = root.appendingPathComponent("Mobile/Sources")
+        let mobileFiles = Self.swiftFiles(under: mobile)
+        XCTAssertGreaterThan(mobileFiles.count, 3, "mobile sources not found at \(mobile.path)")
+        let extensionFiles = Self.extensionSourceDirectories(root: root).flatMap { Self.swiftFiles(under: $0) }
+        XCTAssertGreaterThan(extensionFiles.count, 0, "extension sources not found under Extensions/*/Sources")
 
         var violations: [String] = []
         var scannedLiterals = 0
-        for file in (coreFiles + appFiles) where !Self.isExcludedDirectory(file) {
+        for file in (coreFiles + appFiles + mobileFiles + extensionFiles) where !Self.isExcludedDirectory(file) {
             let source = try String(contentsOf: file, encoding: .utf8)
             let lines = source.components(separatedBy: "\n")
             for literal in Tokenizer.literals(in: source) {

@@ -9,7 +9,7 @@ final class ProcessingTriggerTests: XCTestCase {
     func testTriggerRawValues() {
         XCTAssertEqual(ProcessingTrigger.allCases.map(\.rawValue),
                        ["manual", "retryAll", "startup", "network", "keySaved", "modelChanged", "imported", "due",
-                        "displaySwitch", "variantBackfill", "variantRefresh"])
+                        "displaySwitch", "variantBackfill", "variantRefresh", "foreground", "inbox"])
     }
 
     func testStartedMessageContainsTrigger() {

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "VocabCore",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v13), .iOS(.v17)],
     products: [
         .library(name: "VocabCore", targets: ["VocabCore"])
     ],

@@ -248,6 +248,12 @@ enum L10nEnglish {
         case .panelExportPrompt: return "Export"
         case .panelImportTitle: return "Import Dictionary"
         case .panelImportPrompt: return "Import"
+        case .mobileListTitle: return "Dictionary"
+        case .mobileLoading: return "Loading the dictionary…"
+        case .mobileEmptyTitle: return "No Words Yet"
+        case .mobileEmptyMessage: return "Words you add or import will appear here."
+        case .mobileNoResultsTitle: return "No Results"
+        case .mobileLoadErrorTitle: return "Could Not Open the Dictionary"
         }
     }
 }

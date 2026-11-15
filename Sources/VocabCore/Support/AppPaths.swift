@@ -21,12 +21,23 @@ public struct AppPaths: Equatable, Sendable {
         applicationSupportDirectory.appendingPathComponent("Backups", isDirectory: true)
     }
 
-    /// `~/Library/Application Support/VocabApp/` (на macOS).
+    /// `~/Library/Application Support/VocabApp/` (на macOS); на iOS — `<контейнер застосунку>/Library/Application
+    /// Support/VocabApp/` (IOS_PLAN DI6: власний контейнер, не App Group).
     public static func standard(fileManager: FileManager = .default) -> AppPaths {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? fileManager.homeDirectoryForCurrentUser
+            ?? homeDirectory(fileManager: fileManager)
                 .appendingPathComponent("Library", isDirectory: true)
                 .appendingPathComponent("Application Support", isDirectory: true)
         return AppPaths(applicationSupportDirectory: base.appendingPathComponent(folderName, isDirectory: true))
+    }
+
+    /// Домашній каталог для запасного шляху. `homeDirectoryForCurrentUser` недоступний на iOS (IOS_PLAN §3.1);
+    /// там `NSHomeDirectory()` — корінь контейнера застосунку. На macOS поведінка без змін.
+    private static func homeDirectory(fileManager: FileManager) -> URL {
+        #if os(macOS) || os(Linux)
+        return fileManager.homeDirectoryForCurrentUser
+        #else
+        return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        #endif
     }
 }

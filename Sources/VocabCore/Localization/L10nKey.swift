@@ -246,4 +246,11 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case panelExportPrompt = "panel.export.prompt"
     case panelImportTitle = "panel.import.title"
     case panelImportPrompt = "panel.import.prompt"
+    // iOS (IOS_PLAN §3.4): список (I1a).
+    case mobileListTitle = "mobile.list.title"
+    case mobileLoading = "mobile.loading"
+    case mobileEmptyTitle = "mobile.empty.title"
+    case mobileEmptyMessage = "mobile.empty.message"
+    case mobileNoResultsTitle = "mobile.noResults.title"
+    case mobileLoadErrorTitle = "mobile.loadError.title"
 }
