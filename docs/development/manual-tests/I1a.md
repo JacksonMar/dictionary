@@ -22,7 +22,7 @@ xcodebuild test -project VocabApp.xcodeproj -scheme VocabMobile -destination 'pl
 | # | Крок | Очікуваний результат | Результат |
 |---|---|---|---|
 | T1 | macOS-регресія (`-scheme VocabApp`) | `** TEST SUCCEEDED **`, кількість тестів як до I1a (ядро змінилося: `.iOS(.v17)`, `AppPaths`, `ProcessingTrigger` + `foreground`/`inbox`) | |
-| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`: `AppLaunchTests`, `MobileAppModelTests`, `AppContainerTests`. Якщо ❌ — помилку дослівно; окремо записати, якщо є `No such module 'VocabCore'` у `VocabMobileTests` (тоді в `project.yml` додати `- package: VocabCore` у залежності тест-таргета, як сказано в коментарі там) | |
+| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`, 22 тести: `AppLaunchTests` (1), `AppContainerTests` (7), `MobileAppModelTests` (11), `RouterTests` (3). (Усі, крім `AppLaunchTests`, Tester уже прогнав на Linux у харнесі проти справжнього VocabCore — 21/21; тут перевіряється саме iOS-збірка й хост.) Якщо ❌ — помилку дослівно; окремо записати, якщо є `No such module 'VocabCore'` у `VocabMobileTests` (тоді в `project.yml` додати `- package: VocabCore` у залежності тест-таргета, як сказано в коментарі там) | |
 | T3 | Попередження збірки `VocabMobile` (Xcode → Report navigator): чи є «linked as a static library by … This will result in duplication of library code» або попередження про `@MainActor`/`Sendable` у `Mobile/Sources` | Немає (записати дослівно, якщо є) | |
 | T4 | Чи зібралося ядро під iOS без інших правок (iU13) | Так; якщо ❌ — файл і рядок помилки в `Sources/VocabCore` дослівно | |
 
