@@ -20,7 +20,8 @@
 | I1b — CRUD, Claude, Settings/Keychain | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 41 мобільний тест; iOS-збірка й Keychain — Mac |
 | I2a — Підказка мови в ядрі | done | 1 | PASS — Linux 574 тести (+22 LanguageHintTests); macOS-регресія — у Mac-промпт I2b |
 | I2b — Голосове введення (UI) | done (⏳ Mac) | 1 | PASS умовний — Linux 576 + 72 мобільні тести; Speech/AVFoundation/SwiftUI — Mac |
-| I3 — Share Extension + inbox | in progress | – | – |
+| I3 — Share Extension + inbox | done (⏳ Mac) | 1 | PASS умовний — Linux 590 + 86 мобільних; розширення й App Group — Mac |
+| I4 — App Intents + віджет | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -164,6 +165,14 @@ _(вердикти Judge — нижче по етапах)_
 - Відхилення: `VoiceSupport.swift`, `VoiceSpeechService.swift` (iOS-адаптер), `cancel()` у `SpeechRecognizing`, `VoiceWordSubmitting`, мова з глибокого посилання — лише на сеанс, глибоке посилання без запитаного дозволу → idle («торкніться мікрофона», системний запит при дотику) замість окремого екрана дозволу; плаваюча кнопка мікрофона в списку.
 - Перенесено в I3: `AddWordSheet.swift:68` `.onDisappear { voice.cancel() }` на Form спрацьовує і при переході «Заповнити вручну» → перенести на рівень аркуша.
 - ⏳ Mac: `manual-tests/I2b.md` (§0 — промпт з macOS-регресією; пристрій: повторний старт двигуна S7/D3, музика A4/A5). На iOS очікується 76 тестів.
+
+#### I3 — ітерація 1: PASS (умовний)
+- Ядро `Inbox/` (`InboxStore`: tmp + `moveItem`, ліміт 200, биті → `Rejected/`; `InboxIngestor`: single-flight, 1 `processAll` на прохід, дубль — 0 запитів), Share Extension (не викликає Claude/Keychain, пише лише в `<App Group>/Inbox`), інжест на `.active` у порядку ensureLoaded → ingest → processAll(.foreground), банер звіту.
+- Tester: 19/19 мутантів убито; функціональних багів немає.
+- Відхилення: `scan()`/`InboxScanResult`, logger в ingestor, тригер `.inbox` лише в логах (`processAll(ignoringBackoff: false)`), `ShareInboxWriter.swift`, plain-text має пріоритет над `attributedContentText` (до спостереження iU6), мова розширення — з `Locale.preferredLanguages`.
+- Ризик Mac: `VocabMobileTests` компілює файли розширення за шляхом без лінкування VocabCore → можливі `Undefined symbols` при dead-strip. Якщо станеться — **не** додавати `- package: VocabCore` у тести (дві копії стану L10n), а змусити застосунок посилатися на символи.
+- Перенесено (бажано, I5): тайм-аут ~5 с у `ShareViewController.loadCandidates` (лист може зависнути в «Збереження…»); банер недораховує при storage-помилці (failed = 1 при кількох залишених файлах).
+- ⏳ Mac: `manual-tests/I3.md`; на iOS очікується 90 тестів.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
