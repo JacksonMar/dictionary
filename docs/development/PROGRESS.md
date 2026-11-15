@@ -16,7 +16,8 @@
 | M10 — Підготовка до публікації | done (⏳ Mac) | 1 | FAIL лише через відсутність macOS-збірки; зміст README/LICENSE/гігієна ✅ |
 | iOS-план (`IOS_PLAN.md`) | approved | 2 | PASS (ітерація 2) + затвердження користувача |
 | I0 — Спайк підпису й можливостей | done (⏳ Mac) | 2 | PASS умовний (ітерація 2) — Linux 552 тести; iOS-збірка й пристрій — користувач (відкладено) |
-| I1a — Ядро на iOS + каркас + список | in progress | – | – |
+| I1a — Ядро на iOS + каркас + список | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 21 мобільний тест у харнесі; iOS-збірка — Mac |
+| I1b — CRUD, Claude, Settings/Keychain | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -129,6 +130,14 @@ _(вердикти Judge — нижче по етапах)_
 - Неблокуюче: порожній слот AppIcon 1024 (попередження actool).
 - ⏳ Mac: `manual-tests/I0.md` — T1 (macOS-регресія), T2/T2a/T3 (iU8), пристрій D/S/W/L (iU1, iU2, iU3), рішення за Планом Б → сюди.
 - 2026-11-15: **користувач відклав перевірку I0 на Mac** («роби далі»). Продовжуємо I1a з припущенням «усе працює → план без змін»; ризик — накопичення помилок компіляції iOS до першої Mac-збірки. Мітигація: максимум логіки тайпчекається на Linux проти справжнього VocabCore.
+
+#### I1a — ітерація 1: PASS (умовний)
+- Ядро: `.iOS(.v17)`, `AppPaths` fallback `NSHomeDirectory()` поза macOS/Linux, `ProcessingTrigger` + `.foreground`, `.inbox`; скан кирилиці охоплює `Mobile/Sources`, `Extensions/*/Sources`.
+- `AppContainer` (single-flight `ensureLoaded`), `MobileAppModel`, `Router`/`DeepLink`, `EntryListView`/`EntryRowView`.
+- Linux: 552 тести ядра; мобільні тести (21 із 22, без hosted `AppLaunchTests`) компілюються й проходять у Linux-харнесі проти справжнього VocabCore (scratchpad, не в репо).
+- Прийняті відхилення: `VocabMobileTests` без прямого лінкування VocabCore (як macOS `VocabAppTests`; запасний план у `project.yml`); `EntryRowContent` у `MobileAppModel.swift`.
+- Перенесено в I1b: `loadOutcome` присвоювати всередині `Task` (усі викликачі бачать `isLoaded` одразу після `await`) + тест; винести `EntryRowContent` в окремий файл; `hasNoSearchResults` прибрати або задіяти.
+- ⏳ Mac: `manual-tests/I1a.md` (разом з I0.md).
 
 ## Відкриті питання / невизначеності щодо macOS API
 
