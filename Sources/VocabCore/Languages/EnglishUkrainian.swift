@@ -5,6 +5,7 @@ extension LanguagePair {
     /// Текст шаблонів — як у M2; для пари з `renderings` `PromptBuilder` сам додає вимогу додаткових ключів і
     /// мовно-нейтральні формулювання (§7.7), тож пара без `renderings` з цими шаблонами дає рівно промт M2.
     /// M8 (D31): `domainInstruction` — IT/QA-контекст, додається в кінець system (≤ 70 слів).
+    /// I2a (DI13): `sourceHintInstruction` — підказка мови від користувача (≤ 40 слів), лише з підказкою.
     public static let englishUkrainian = LanguagePair(
         id: "en-uk",
         sourceLanguageName: "English",
@@ -52,6 +53,10 @@ extension LanguagePair {
             Write the example (source and translation) in an IT/QA context (bug reports, tests, CI, code review, \
             releases) when the word fits naturally; otherwise a neutral everyday example. This applies to the \
             top level and every variant.
+            """,
+            sourceHintInstruction: """
+            The user stated the text is {{LANGUAGE_NAME}}; set source_language to "{{LANGUAGE_CODE}}" unless the \
+            text is clearly not {{LANGUAGE_NAME}}.
             """
         ),
         sourceLanguageCode: "en",

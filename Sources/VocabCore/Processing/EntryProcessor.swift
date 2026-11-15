@@ -66,7 +66,13 @@ public final class EntryProcessor: Sendable {
         let text = TextNormalizer.clean(entry.word)
         let kind = SelectionValidator.kind(of: text)
         do {
-            let result = try await lookup.lookup(text: text, kind: kind, pair: pair)
+            // I2a: підказка мови з pending/failed-запису (невідомий код ігнорує `PromptBuilder`).
+            let result = try await lookup.lookup(
+                text: text,
+                kind: kind,
+                pair: pair,
+                sourceLanguageHint: entry.languageHint
+            )
             return await applySuccess(result, entryID: entryID, pair: pair)
         } catch {
             let claudeError = ClaudeError.from(transportError: error)
@@ -121,6 +127,8 @@ public final class EntryProcessor: Sendable {
         entry.example = result.example
         entry.status = .ready
         entry.lastError = nil
+        // I2a (DI13): підказка потрібна лише до першої успішної обробки.
+        entry.languageHint = nil
 
         // Пара без renderings — як у M2: варіанти не чіпаються.
         let hasRenderings = !pair.renderings.isEmpty

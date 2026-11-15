@@ -35,6 +35,13 @@ public final class AddWordUseCase: Sendable {
     }
 
     public func execute(rawText: String?) async -> AddWordOutcome {
+        await execute(rawText: rawText, sourceLanguageHint: nil)
+    }
+
+    /// I2a (DI13): `sourceLanguageHint` — мова, яку вказав користувач (напр. мова мовлення). Код поза
+    /// `pair.allowedSourceLanguages` відкидається; інакше зберігається в `Entry.languageHint` pending-запису
+    /// і передається Claude однією фразою в тому самому промті. Дедуплікація до запиту — без змін (D26).
+    public func execute(rawText: String?, sourceLanguageHint: String?) async -> AddWordOutcome {
         let cleaned: CleanedSelection
         switch SelectionValidator.validate(rawText) {
         case .rejected(let rejection):
@@ -47,9 +54,13 @@ public final class AddWordUseCase: Sendable {
         let configuredPair = settings.languagePairID
         let pairID = registry.pair(id: configuredPair) != nil ? configuredPair : LanguagePairRegistry.defaultPairID
 
+        let hint = Self.acceptedHint(sourceLanguageHint, pair: registry.pair(id: pairID))
+
         let entry: Entry
         do {
-            entry = try await repository.add(EntryDraft(word: cleaned.text, languagePair: pairID, status: .pending))
+            entry = try await repository.add(
+                EntryDraft(word: cleaned.text, languagePair: pairID, status: .pending, languageHint: hint)
+            )
         } catch RepositoryError.duplicate(let existing) {
             return .duplicate(existing)
         } catch let error as RepositoryError {
@@ -74,5 +85,15 @@ public final class AddWordUseCase: Sendable {
             // M7 (D27): дубль виявлено після відповіді (напр. італійське виділення = наявний запис).
             return .duplicate(existing)
         }
+    }
+
+    /// Підказка, якщо вона (після trim) — один із `pair.allowedSourceLanguages`; інакше `nil`.
+    static func acceptedHint(_ hint: String?, pair: LanguagePair?) -> String? {
+        guard let pair,
+              let code = hint?.trimmingCharacters(in: .whitespacesAndNewlines),
+              pair.allowedSourceLanguages.contains(code) else {
+            return nil
+        }
+        return code
     }
 }

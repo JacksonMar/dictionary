@@ -6,6 +6,11 @@ import Foundation
 /// M7: `variants` (додаткові відображення, §3.2) і `sourceLanguage` (мова виділення, D25) — адитивні опційні
 /// поля; запис без них кодується байт-у-байт як у M6 (D21). Некоректний варіант при декодуванні відкидається,
 /// не ламаючи запис (D22).
+///
+/// I2a (DI13): `languageHint` — адитивне опційне поле (схема v1); запис без підказки кодується байт-у-байт як
+/// до I2a. Синтезований `Equatable` поле **враховує** (повний round-trip), але merge імпорту (D1) `Equatable` не
+/// використовує: конфлікт визначається лише за `id`/ключем, `updatedAt` і `status`, тож різниця лише в підказці
+/// конфлікту не створює (див. `ImportMerger`, IOS_PLAN §3.2).
 public struct Entry: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     /// Ідентифікатор мовної пари, напр. `"en-uk"`.
@@ -28,6 +33,10 @@ public struct Entry: Codable, Equatable, Identifiable, Sendable {
     public var variants: [String: EntryVariant]?
     /// M7: мова виділеного тексту, якщо вона не мова джерела пари (зараз лише `"it"`); `nil` = мова пари.
     public var sourceLanguage: String?
+    /// I2a (DI13): мова, яку вказав користувач (напр. мова мовлення), як підказка для Claude. Лише для
+    /// `pending`/`failed`; `EntryProcessor` очищує її, коли запис стає `ready`. Невідомий код зберігається, але
+    /// ігнорується при побудові промту. Не плутати з `sourceLanguage` (мова, визначена моделлю, D25).
+    public var languageHint: String?
 
     public init(
         id: UUID = UUID(),
@@ -43,7 +52,8 @@ public struct Entry: Codable, Equatable, Identifiable, Sendable {
         createdAt: Date,
         updatedAt: Date,
         variants: [String: EntryVariant]? = nil,
-        sourceLanguage: String? = nil
+        sourceLanguage: String? = nil,
+        languageHint: String? = nil
     ) {
         self.id = id
         self.languagePair = languagePair
@@ -59,16 +69,17 @@ public struct Entry: Codable, Equatable, Identifiable, Sendable {
         self.updatedAt = updatedAt
         self.variants = variants
         self.sourceLanguage = sourceLanguage
+        self.languageHint = languageHint
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, languagePair, word, lemma, partOfSpeech, transcription, translations, example, status, lastError
-        case createdAt, updatedAt, variants, sourceLanguage
+        case createdAt, updatedAt, variants, sourceLanguage, languageHint
     }
 
     /// Поля M1–M6 декодуються суворо (як синтезований `Codable`); `variants` — поелементно: некоректний варіант
     /// (не той тип, невідомий `status`, відсутній `sourceKey`) відкидається. `variants`, що не є об'єктом,
-    /// і некоректний `sourceLanguage` ігноруються.
+    /// і некоректні `sourceLanguage`/`languageHint` ігноруються.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -96,6 +107,11 @@ public struct Entry: Codable, Equatable, Identifiable, Sendable {
         let rawSourceLanguage = (try? container.decodeIfPresent(String.self, forKey: .sourceLanguage)) ?? nil
         let trimmedSourceLanguage = rawSourceLanguage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         sourceLanguage = trimmedSourceLanguage.isEmpty ? nil : trimmedSourceLanguage
+
+        // I2a: порожній/нерядковий `languageHint` → `nil` (запис не ламається).
+        let rawHint = (try? container.decodeIfPresent(String.self, forKey: .languageHint)) ?? nil
+        let trimmedHint = rawHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        languageHint = trimmedHint.isEmpty ? nil : trimmedHint
     }
 
     /// Еквівалент синтезованого кодування; порожній `variants` не пишеться.
@@ -117,6 +133,7 @@ public struct Entry: Codable, Equatable, Identifiable, Sendable {
             try container.encode(variants, forKey: .variants)
         }
         try container.encodeIfPresent(sourceLanguage, forKey: .sourceLanguage)
+        try container.encodeIfPresent(languageHint, forKey: .languageHint)
     }
 }
 

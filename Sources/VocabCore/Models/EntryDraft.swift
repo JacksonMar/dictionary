@@ -10,6 +10,8 @@ public struct EntryDraft: Equatable, Sendable {
     public var translations: [String]
     public var example: Example?
     public var status: EntryStatus
+    /// I2a (DI13): підказка мови для `pending`-запису (див. `Entry.languageHint`).
+    public var languageHint: String?
 
     public init(
         word: String,
@@ -19,7 +21,8 @@ public struct EntryDraft: Equatable, Sendable {
         transcription: String? = nil,
         translations: [String] = [],
         example: Example? = nil,
-        status: EntryStatus
+        status: EntryStatus,
+        languageHint: String? = nil
     ) {
         self.word = word
         self.languagePair = languagePair
@@ -29,5 +32,6 @@ public struct EntryDraft: Equatable, Sendable {
         self.translations = translations
         self.example = example
         self.status = status
+        self.languageHint = languageHint
     }
 }

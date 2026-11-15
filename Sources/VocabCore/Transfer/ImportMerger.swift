@@ -36,6 +36,10 @@ public enum ImportMerger {
     ///   заміна, що дала б дубль іншого локального запису, — `skipped`;
     /// - інакше (старіший або рівний) → `skipped`.
     /// `report.skipped` включає дублікати у файлі, але **не** невалідні записи з `ParsedImport` (їх додає виклик).
+    /// I2a (DI13): `languageHint` не бере участі ні в ідентичності (`id`/ключ), ні у виборі переможця (`updatedAt`,
+    /// `status`), ні в порівнянні «змінилось/ні» (`Entry ==` тут не використовується, `sameVariants` — лише
+    /// варіанти). Тож записи, що різняться лише підказкою, не дають ні конфлікту, ні `updated`; підказка
+    /// переноситься разом із записом-переможцем (заміна — підказка імпортованого, пропуск — локального).
     public static func merge(local: [Entry], imported: [Entry]) -> (entries: [Entry], report: ImportReport) {
         let collapsed = collapseDuplicates(imported)
         var report = ImportReport()

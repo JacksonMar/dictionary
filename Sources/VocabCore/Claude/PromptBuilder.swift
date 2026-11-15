@@ -22,6 +22,10 @@ public struct BuiltPrompt: Equatable, Sendable {
 ///
 /// M8 (D31): якщо `pair.prompt.domainInstruction` непорожня, вона додається в кінець system (один раз, в обох
 /// режимах). `domainInstruction` мов відображення сюди не додається.
+///
+/// I2a (DI13): `build(text:kind:pair:sourceLanguageHint:)` — якщо підказка є в `pair.allowedSourceLanguages`, пара має
+/// `renderings` і `pair.prompt.sourceHintInstruction` непорожній, інструкція (з підставленими назвою й кодом мови)
+/// додається **один раз** у самий кінець system комбінованого промту. Інакше промт байт-у-байт як без підказки.
 public enum PromptBuilder {
     /// Рядок, що додається в кінець user-повідомлення при повторі після невалідної відповіді (§7.5).
     public static let retrySuffix = "Попередня відповідь була невалідною. Поверни лише JSON."
@@ -32,6 +36,15 @@ public enum PromptBuilder {
     public static let extendedShapePhrase = "this shape, plus the extra keys requested below"
 
     public static func build(text: String, kind: SelectionKind, pair: LanguagePair) -> BuiltPrompt {
+        build(text: text, kind: kind, pair: pair, sourceLanguageHint: nil)
+    }
+
+    public static func build(
+        text: String,
+        kind: SelectionKind,
+        pair: LanguagePair,
+        sourceLanguageHint: String?
+    ) -> BuiltPrompt {
         let template: String
         switch kind {
         case .word: template = pair.prompt.userWord
@@ -45,7 +58,26 @@ public enum PromptBuilder {
         let user = neutralizedUserTemplate(template, pair: pair)
             .replacingOccurrences(of: PromptTemplate.textPlaceholder, with: text)
         let system = withDomainInstruction(combinedSystem(for: pair), pair.prompt.domainInstruction)
-        return BuiltPrompt(system: system, user: user)
+        guard let hintInstruction = sourceHintInstruction(for: sourceLanguageHint, pair: pair) else {
+            return BuiltPrompt(system: system, user: user)
+        }
+        return BuiltPrompt(system: system + "\n\n" + hintInstruction, user: user)
+    }
+
+    /// I2a: інструкція-підказка з підставленими назвою й кодом мови, або `nil` (нема/невідома підказка, пара без
+    /// `renderings`, порожній шаблон).
+    static func sourceHintInstruction(for hint: String?, pair: LanguagePair) -> String? {
+        let template = pair.prompt.sourceHintInstruction
+        guard !template.isEmpty,
+              !pair.renderings.isEmpty,
+              let hint,
+              pair.allowedSourceLanguages.contains(hint),
+              let name = pair.languageName(forCode: hint) else {
+            return nil
+        }
+        return template
+            .replacingOccurrences(of: PromptTemplate.languageNamePlaceholder, with: name)
+            .replacingOccurrences(of: PromptTemplate.languageCodePlaceholder, with: hint)
     }
 
     /// M8 (D31): `system + "\n\n" + instruction`, якщо інструкція непорожня; інакше `system` без змін.

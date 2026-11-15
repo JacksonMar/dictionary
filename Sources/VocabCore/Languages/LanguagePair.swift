@@ -13,12 +13,26 @@ public struct PromptTemplate: Hashable, Sendable {
     /// M8 (D31): доменна інструкція (IT/QA-контекст), яку `PromptBuilder` додає в кінець system, якщо вона
     /// непорожня. Порожньо → промт без змін.
     public let domainInstruction: String
+    /// I2a (DI13): речення-підказка мови з плейсхолдерами `{{LANGUAGE_NAME}}`/`{{LANGUAGE_CODE}}`; `PromptBuilder`
+    /// додає його в кінець system комбінованого промту, лише якщо задано підказку з `allowedSourceLanguages`.
+    /// Порожньо → промт без змін.
+    public let sourceHintInstruction: String
 
-    public init(system: String, userWord: String, userPhrase: String, domainInstruction: String = "") {
+    public static let languageNamePlaceholder = "{{LANGUAGE_NAME}}"
+    public static let languageCodePlaceholder = "{{LANGUAGE_CODE}}"
+
+    public init(
+        system: String,
+        userWord: String,
+        userPhrase: String,
+        domainInstruction: String = "",
+        sourceHintInstruction: String = ""
+    ) {
         self.system = system
         self.userWord = userWord
         self.userPhrase = userPhrase
         self.domainInstruction = domainInstruction
+        self.sourceHintInstruction = sourceHintInstruction
     }
 }
 
@@ -69,5 +83,13 @@ public struct LanguagePair: Hashable, Sendable {
     /// Допустимі значення `source_language` (§3.2): мова джерела + мови відображення.
     public var allowedSourceLanguages: [String] {
         [sourceLanguageCode] + renderings.map(\.id)
+    }
+
+    /// I2a: англійська назва мови за кодом із `allowedSourceLanguages` (`"en"` → `"English"`), або `nil`.
+    public func languageName(forCode code: String) -> String? {
+        if code == sourceLanguageCode {
+            return sourceLanguageName
+        }
+        return rendering(id: code)?.languageName
     }
 }

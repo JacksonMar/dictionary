@@ -3,6 +3,25 @@ import Foundation
 /// Пошук перекладу слова/фрази.
 public protocol WordLookupService: Sendable {
     func lookup(text: String, kind: SelectionKind, pair: LanguagePair) async throws -> LookupResult
+    /// I2a (DI13): те саме з підказкою мови від користувача (`Entry.languageHint`); `nil` — як без підказки.
+    func lookup(
+        text: String,
+        kind: SelectionKind,
+        pair: LanguagePair,
+        sourceLanguageHint: String?
+    ) async throws -> LookupResult
+}
+
+extension WordLookupService {
+    /// За замовчуванням підказка ігнорується (тестові заглушки й старі реалізації працюють без змін).
+    public func lookup(
+        text: String,
+        kind: SelectionKind,
+        pair: LanguagePair,
+        sourceLanguageHint: String?
+    ) async throws -> LookupResult {
+        try await lookup(text: text, kind: kind, pair: pair)
+    }
 }
 
 /// `WordLookupService` через Claude Messages API (§7.5).
@@ -32,11 +51,21 @@ public final class ClaudeLookupService: WordLookupService {
     }
 
     public func lookup(text: String, kind: SelectionKind, pair: LanguagePair) async throws -> LookupResult {
+        try await lookup(text: text, kind: kind, pair: pair, sourceLanguageHint: nil)
+    }
+
+    public func lookup(
+        text: String,
+        kind: SelectionKind,
+        pair: LanguagePair,
+        sourceLanguageHint: String?
+    ) async throws -> LookupResult {
         let apiKey = try readAPIKey()
         let configuration = currentConfiguration()
 
         // M7: для пари з `renderings` — комбінований промт (усі мови одним запитом, §7.7).
-        let prompt = PromptBuilder.build(text: text, kind: kind, pair: pair)
+        // I2a: підказка мови — одне речення в кінці того самого system (кількість запитів не змінюється).
+        let prompt = PromptBuilder.build(text: text, kind: kind, pair: pair, sourceLanguageHint: sourceLanguageHint)
         let parse: (Data) throws -> LookupResult = { data in
             try LookupResponseParser.parseMessagesResponse(
                 data,

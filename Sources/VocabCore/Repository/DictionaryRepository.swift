@@ -80,7 +80,8 @@ public actor DictionaryRepository {
             status: draft.status,
             lastError: nil,
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
+            languageHint: draft.languageHint
         )
         try commit(entries + [entry])
         return entry
@@ -88,13 +89,15 @@ public actor DictionaryRepository {
 
     /// Оновлює запис за `id`; `updatedAt` = зараз, `createdAt` зберігається з поточного стану.
     /// M7: збережені `variants` і `sourceLanguage` **зберігаються** (аргумент може бути застарілою копією
-    /// редактора/`AppModel`), див. `update(_:replacingVariants:)`.
+    /// редактора/`AppModel`), див. `update(_:replacingVariants:)`. I2a: так само зберігається `languageHint`
+    /// (очищується, якщо запис збережено як `ready`).
     @discardableResult
     public func update(_ entry: Entry) throws -> Entry {
         try update(entry, replacingVariants: false)
     }
 
-    /// `replacingVariants: true` — `variants` і `sourceLanguage` беруться з аргументу (лише `EntryProcessor`).
+    /// `replacingVariants: true` — `variants`, `sourceLanguage` і `languageHint` беруться з аргументу (лише
+    /// `EntryProcessor`).
     /// Дубль перевіряється **лише** за англійським `key(word)` проти англійських ключів інших записів пари і
     /// лише якщо ключ (або пара) змінився відносно збереженого запису (§6, M7). Варіанти дублів не перевіряються.
     @discardableResult
@@ -119,6 +122,11 @@ public actor DictionaryRepository {
         if !replacingVariants {
             updated.variants = stored.variants
             updated.sourceLanguage = stored.sourceLanguage
+            updated.languageHint = stored.languageHint
+        }
+        // I2a (DI13): підказка мови живе лише до `ready` (у т. ч. пара без renderings і ручне заповнення).
+        if updated.status == .ready {
+            updated.languageHint = nil
         }
         if updated.variants?.isEmpty == true {
             updated.variants = nil

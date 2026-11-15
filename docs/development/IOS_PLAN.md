@@ -122,6 +122,15 @@ Info.plist `VocabMobile`: `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUs
   ≤ 40 слів: «The user stated the text is {{LANGUAGE_NAME}}; set source_language to "{{LANGUAGE_CODE}}" unless the
   text is clearly not {{LANGUAGE_NAME}}.»). Парсер не змінюється: фінальну `sourceLanguage` визначає відповідь моделі.
 - **Transfer.** Експорт пише поле, якщо є; імпорт/merge (D1) переносить його разом із записом-переможцем.
+- **`Equatable`/merge (рішення I2a).** Синтезований `Entry ==` поле **враховує** (round-trip у тестах, `Entry`
+  ідентичний збереженому). `ImportMerger` `Entry ==` не використовує: збіг — за `id` або (`languagePair`, `key(word)`),
+  переможець — строго новіший `updatedAt` + правило «pending/failed не перезаписує ready», «змінилось» — лише
+  `sameVariants`. Тому записи, що різняться **лише** `languageHint` (Mac-копія без підказки й iPhone-копія з нею;
+  підказку очищено після `ready`), не дають ні конфлікту, ні `updated`: при рівному `updatedAt` — `skipped`, при
+  новішому — звичайна заміна D1. Переможець несе власну підказку (заміна — імпортованого, пропуск — локального).
+  `DictionaryRepository.update` без `replacingVariants` зберігає збережену підказку (як `variants`), а будь-яке
+  збереження як `ready` її очищує (у т. ч. пара без `renderings` і ручне заповнення). Тест —
+  `testHintDoesNotCreateSpuriousConflict`.
 - **Mac.** Поле ніде не показується. Mac-збірка з новим ядром використовує підказку при обробці імпортованого
   pending-запису (той самий `EntryProcessor`). Старі Mac-збірки (M9/M10) ігнорують невідомий ключ, обробляють запис
   за D25 (без підказки) і при збереженні поле губиться — прийнятно (як варіанти в D21).
