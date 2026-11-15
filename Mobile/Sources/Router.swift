@@ -3,13 +3,37 @@ import Foundation
 import Combine
 #endif
 
-/// Екран/аркуш, який треба показати (IOS_PLAN §2, §4). I1a показує лише список; `addSheet` — I1b,
-/// `voiceCapture` — I2b (зараз маршрут лише запам'ятовується).
+/// Екран/аркуш, який треба показати (IOS_PLAN §2, §4). `voiceCapture` до I2b відкриває звичайний аркуш додавання
+/// (без мікрофона). `settings` — аркуш Налаштувань: маршрут живе поза коренем UI, тож після зміни мови інтерфейсу
+/// (DI14, `.id(interfaceLanguage)`) перебудований список знову показує відкриті Налаштування.
 enum AppRoute: Equatable, Sendable {
     case list
     case addSheet
     /// `languageID`: `"en"` / `"it"` або `nil` (остання вибрана мова голосу).
     case voiceCapture(languageID: String?)
+    case settings
+
+    /// Аркуш для маршруту (`nil` — лише список).
+    var sheet: AppSheet? {
+        switch self {
+        case .list:
+            return nil
+        case .addSheet, .voiceCapture:
+            return .addWord
+        case .settings:
+            return .settings
+        }
+    }
+}
+
+/// Аркуш поверх списку (`.sheet(item:)`).
+enum AppSheet: String, Identifiable, Sendable {
+    case addWord
+    case settings
+
+    var id: String {
+        rawValue
+    }
 }
 
 /// Розбір глибоких посилань `vocabapp://…` (віджет, intent-и). Мінімальна версія; повна — I4 (`DeepLinkTests`).
@@ -59,5 +83,21 @@ final class Router: ObservableObject {
 
     func dismiss() {
         route = .list
+    }
+
+    /// Прив'язка `.sheet(item:)`: показ — маршрут аркуша; закриття (свайп униз) → `.list`.
+    var presentedSheet: AppSheet? {
+        get { route.sheet }
+        set {
+            guard newValue != route.sheet else { return }
+            switch newValue {
+            case .addWord?:
+                route = .addSheet
+            case .settings?:
+                route = .settings
+            case nil:
+                route = .list
+            }
+        }
     }
 }

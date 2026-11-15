@@ -57,7 +57,15 @@ targets:
   VocabMobile:
     type: application
     platform: iOS
-    sources: [Mobile/Sources, Mobile/Resources]
+    # I1b (IOS_PLAN DI4, DI8): platform-independent Apple files are shared with the macOS target by path
+    # (no files are moved; the macOS target is unchanged).
+    sources:
+      - Mobile/Sources
+      - Mobile/Resources
+      - App/Sources/Platform/KeychainSecretStore.swift
+      - App/Sources/Platform/OSLogSink.swift
+      - App/Sources/Platform/SpeechService.swift
+      - App/Sources/Views/RenderingLanguageTexts.swift
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
