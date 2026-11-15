@@ -85,7 +85,7 @@ docs/development/manual-tests/I0.md … I5.md
 Наявні `VocabApp`/`VocabAppTests` не змінюються. Набір таргетів може скоротитися за рішенням I0 (План Б).
 
 Bundle ID (усі з `$(VOCAB_BUNDLE_ID_PREFIX)` — ID глобально унікальні, `com.vocabapp.*` може бути зайнятий):
-`<prefix>.VocabMobile`, `<prefix>.VocabMobile.Share`, `<prefix>.VocabMobile.Widget`; App Group `group.<prefix>.vocab`
+`<prefix>.VocabMobile`, `<prefix>.VocabMobile.Share`, `<prefix>.VocabMobile.Widget`; App Group `group.<prefix>`
 (`$(VOCAB_APP_GROUP)` підставляється в entitlements і в Info.plist-ключ `VocabAppGroupID`, звідки його читає код).
 
 Info.plist `VocabMobile`: `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription` (локалізовані в

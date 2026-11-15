@@ -19,7 +19,7 @@ struct AppGroupProbe {
     static let appProbeFileName = "app-probe.txt"
     static let shareProbePrefix = "share-"
 
-    enum Status: Equatable {
+    enum Status: Error, Equatable {
         case ok(containerPath: String)
         case missingGroupID
         case containerUnavailable(groupID: String)
