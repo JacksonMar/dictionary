@@ -113,7 +113,7 @@ Info.plist `VocabMobile`: `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUs
 - **Життєвий цикл.** `AddWordUseCase.execute(rawText:sourceLanguageHint:)` (стара сигнатура делегує з `nil`);
   підказка поза `pair.allowedSourceLanguages` відкидається; pending-запис отримує `languageHint`. Дедуплікація до
   запиту — як D26 (0 запитів). `EntryProcessor` при успіху (`ready`) ставить `languageHint = nil`; pending/failed —
-  зберігає (офлайн, повтори, ручний «Повторити»). Редагування (`update`) поле не змінює.
+  зберігає (офлайн, повтори, ручний «Повторити»). Редагування (`update`) поле не змінює, крім збереження як ready — тоді підказка очищується.
 - **Запит.** `WordLookupService` + `lookup(text:kind:pair:sourceLanguageHint:)` з default-реалізацією в extension,
   що викликає стару (тестові заглушки не ламаються); `ClaudeLookupService` реалізує нову; `EntryProcessor` передає
   `entry.languageHint`. `PromptBuilder.build(text:kind:pair:sourceLanguageHint:)`: якщо підказка `nil`/невідома, пара
@@ -300,7 +300,7 @@ MobileAppModel,Router}.swift`, `Views/{EntryListView,EntryRowView}`, `I1a.md`.
 ### I2a — Підказка мови в ядрі (лише Linux, без iOS-коду)
 **Файли:** `Models/{Entry,EntryDraft}.swift`, `UseCases/AddWordUseCase.swift`, `Claude/{ClaudeLookupService,
 PromptBuilder}.swift`, `Languages/{LanguagePair,EnglishUkrainian}.swift`, `Processing/EntryProcessor.swift`,
-`Transfer/ImportMerger.swift` (перенесення поля). Тести — нові `LanguageHintTests.swift`.
+`Transfer/ImportMerger.swift` (перенесення поля), `Repository/DictionaryRepository.swift` (копіювання з draft, збереження при update, очищення на ready). Тести — нові `LanguageHintTests.swift`.
 | КП | Перевірка (Linux) |
 |---|---|
 | I2a.1 Промт без підказки незмінний | `testPromptWithoutHintIsByteIdentical`, `testHintAppendedOnceForPairWithRenderings`, `testUnknownHintIgnored`, `testHintIgnoredForPairWithoutRenderings` |

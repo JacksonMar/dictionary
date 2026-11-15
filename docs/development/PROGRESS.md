@@ -18,7 +18,8 @@
 | I0 — Спайк підпису й можливостей | done (⏳ Mac) | 2 | PASS умовний (ітерація 2) — Linux 552 тести; iOS-збірка й пристрій — користувач (відкладено) |
 | I1a — Ядро на iOS + каркас + список | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 21 мобільний тест у харнесі; iOS-збірка — Mac |
 | I1b — CRUD, Claude, Settings/Keychain | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 41 мобільний тест; iOS-збірка й Keychain — Mac |
-| I2a — Підказка мови в ядрі | in progress | – | – |
+| I2a — Підказка мови в ядрі | done | 1 | PASS — Linux 574 тести (+22 LanguageHintTests); macOS-регресія — у Mac-промпт I2b |
+| I2b — Голосове введення (UI) | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -148,6 +149,13 @@ _(вердикти Judge — нижче по етапах)_
 - Після помилки завантаження повтор лише перезапуском застосунку (як macOS, §4).
 - Після рев'ю: `.foreground` поважає backoff (зауваження Judge щодо токенів), прибрано невикористаний ключ L10n.
 - ⏳ Mac: `manual-tests/I1b.md`.
+
+#### I2a — ітерація 1: PASS
+- `Entry.languageHint` (адитивне, `encodeIfPresent`; запис без підказки — байт-у-байт як раніше), `AddWordUseCase.execute(rawText:sourceLanguageHint:)` (поза `allowedSourceLanguages` — відкидається), `WordLookupService`/`PromptBuilder` з підказкою (без підказки промт байт-у-байт як раніше), очищення на ready.
+- Equatable/merge: синтезований `Entry ==` включає поле, але `ImportMerger` його не використовує (збіг за id/ключем, переможець за `updatedAt`) → записи, що відрізняються лише підказкою, не дають конфлікту (`testHintDoesNotCreateSpuriousConflict`). Описано в IOS_PLAN §3.2.
+- Відхилення: змінено `DictionaryRepository.swift` (add копіює підказку; update її зберігає; збереження як ready очищує — зокрема ручне заповнення). Два еквівалентні мутанти (надлишкові guard-и в `PromptBuilder` і `EntryProcessor`) — прийнято як захист у глибину.
+- Токени: слово з підказкою — 1 запит; італійський дубль ready-варіанта — 0.
+- Обов'язково в Mac-промпті I2b: macOS-регресія `xcodebuild test -scheme VocabApp`.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
