@@ -15,7 +15,7 @@
 | M9 — Інтерфейс EN/UK | done (⏳ Mac) | 1 | PASS умовний — Linux 542 тести; macOS: 113 App-тестів очікується |
 | M10 — Підготовка до публікації | done (⏳ Mac) | 1 | FAIL лише через відсутність macOS-збірки; зміст README/LICENSE/гігієна ✅ |
 | iOS-план (`IOS_PLAN.md`) | approved | 2 | PASS (ітерація 2) + затвердження користувача |
-| I0 — Спайк підпису й можливостей | in progress | – | – |
+| I0 — Спайк підпису й можливостей | done (⏳ Mac) | 2 | PASS умовний (ітерація 2) — Linux 552 тести; iOS-збірка й пристрій — користувач |
 
 ## Середовище перевірки
 
@@ -118,6 +118,15 @@
 
 ### Етапи iOS
 _(вердикти Judge — нижче по етапах)_
+
+#### I0 — ітерація 1: FAIL
+- Помилка компіляції `VocabMobileApp.swift:68`: `Result<URL, Status>`, а `Status` не `Error`. Tester її пропустив (рев'ю без компіляції). Дрібне: суперечність імені App Group у `IOS_PLAN.md` §2/§6.
+
+#### I0 — ітерація 2: PASS (умовний)
+- Виправлено (`enum Status: Error, Equatable`); App Group = `group.<prefix>` (§6). Linux: 552 тести, 0 падінь (зокрема 10 тестів гігієни Team ID; Tester мутаційно перевірив 20 варіантів витоку).
+- Новий прийом проти «помилок, видимих лише на Mac»: не-UI iOS-код (probe, ShareViewController, SpikeTests) тайпчекається на Linux із заглушками UIKit/`containerURL` (`swiftc -swift-version 5 -typecheck`). SwiftUI-екрани й віджет — лише рев'ю.
+- Неблокуюче: порожній слот AppIcon 1024 (попередження actool).
+- ⏳ Mac: `manual-tests/I0.md` — T1 (macOS-регресія), T2/T2a/T3 (iU8), пристрій D/S/W/L (iU1, iU2, iU3), рішення за Планом Б → сюди.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
