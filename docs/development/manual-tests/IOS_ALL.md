@@ -15,6 +15,9 @@ iOS-збірка відбудеться після I5. Цей файл — **о�
    Якщо симулятора «iPhone 16» немає — підставити наявний iPhone в усі команди нижче.
    Перевірити, що існує Config/Local.xcconfig (gitignored; Team ID і префікс — від користувача, у звіт НЕ вставляти)
    і що `git status --porcelain Config/` його не показує.
+   Якщо Config/Local.xcconfig немає — НЕ створювати його й не вигадувати Team ID: спитати користувача
+   (Team ID — Xcode → Settings → Accounts → Personal Team; префікс — напр. com.<нік>.vocab). Поки відповіді немає —
+   симуляторні кроки 3–5 виконувати з `DEVELOPMENT_TEAM= CODE_SIGNING_ALLOWED=NO`, а установку на iPhone відкласти.
 1. git pull && xcodegen generate
 2. macOS-регресія (ядро змінювалось в I1a, I2a, I3, I4, I5):
    xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp -destination 'platform=macOS' CODE_SIGN_IDENTITY=-
@@ -29,7 +32,8 @@ iOS-збірка відбудеться після I5. Цей файл — **о�
    APP=$(ls -d ~/Library/Developer/Xcode/DerivedData/VocabApp-*/Build/Products/Debug-iphonesimulator/VocabMobile.app | head -1)
    ls "$APP/Metadata.appintents" "$APP/PlugIns" "$APP/en.lproj" "$APP/uk.lproj"
    plutil -p "$APP/Info.plist" | grep -A4 CFBundleURLTypes
-6. Гігієна: git grep -nE 'DEVELOPMENT_TEAM *= *[A-Z0-9]{10}' || echo "no team id"
+6. Гігієна (тестові фікстури з фейковим ABCDE12345 виключено):
+   git grep -nE 'DEVELOPMENT_TEAM *= *[A-Z0-9]{10}' -- . ':!Tests/VocabCoreTests/RepositoryHygiene*' || echo "no team id"
 7. Якщо будь-який крок дає помилки компіляції — НЕ виправляти самостійно: повернути всі помилки дослівно
    (файл:рядок:повідомлення), згруповані за файлами, і зупинитися.
    Виняток — відомий запасний план для `Undefined symbols` у VocabMobileTests (розділ 3 нижче): його можна
@@ -43,7 +47,7 @@ iOS-збірка відбудеться після I5. Цей файл — **о�
 | Набір | Очікування |
 |---|---|
 | Linux (довідково, вже перевірено) | ядро `swift test` — **596**, 0 падінь; мобільний харнес — **124** (106 + 18 `MobileTransferTests`), 0 падінь |
-| macOS `-scheme VocabApp` | `** TEST SUCCEEDED **`, 0 падінь; кількість — як до iOS-етапів (macOS-файли не змінювались; ядро — лише адитивно) |
+| macOS `-scheme VocabApp` | `** TEST SUCCEEDED **`, 0 падінь; кількість — записати N; macOS-файли не змінювались, ядро — лише адитивно, тож N має дорівнювати останньому macOS-прогону до iOS-етапів (за PROGRESS: 113 після M9; якщо інше — пояснити різницю) |
 | iOS `-scheme VocabMobile` | `** TEST SUCCEEDED **`, 0 падінь; **129** = 111 (до I5) + 18 `MobileTransferTests` (план — 6: `testExportRoundTripsThroughCoreImporter`, `testExportFileNameAndContentType`, `testImportCopiesSecurityScopedFileBeforeReading`, `testMergeReportShown`, `testReplaceMakesBackup`, `testImportedPendingProcessedOnce`; додатково 12: скасування, помилки файлу, блокування паралельного перенесення, звіт UK/обрізання причин, ready → 0 запитів, недоступність до завантаження). Лише на iOS (не в Linux-харнесі): hosted `AppLaunchTests`, Keychain-тести, `InfoPlistMobileTests` з бандла |
 
 ## 3. Відомий запасний план: `Undefined symbols` у `VocabMobileTests`

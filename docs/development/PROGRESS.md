@@ -22,7 +22,7 @@
 | I2b — Голосове введення (UI) | done (⏳ Mac) | 1 | PASS умовний — Linux 576 + 72 мобільні тести; Speech/AVFoundation/SwiftUI — Mac |
 | I3 — Share Extension + inbox | done (⏳ Mac) | 1 | PASS умовний — Linux 590 + 86 мобільних; розширення й App Group — Mac |
 | I4 — App Intents + віджет | done (⏳ Mac) | 1 | PASS умовний — Linux 596 + 106 мобільних; AppIntents/WidgetKit — Mac |
-| I5 — Експорт/імпорт, полірування, README | in progress | – | – |
+| I5 — Експорт/імпорт, полірування, README | done (⏳ Mac) | 1 | PASS умовний — Linux 596 + 124 мобільних; iOS 129 очікується на Mac |
 
 ## Середовище перевірки
 
@@ -182,6 +182,17 @@ _(вердикти Judge — нижче по етапах)_
 - Після рев'ю (оркестратор): `static let description: IntentDescription?` (тип як у вимозі протоколу, щоб не підставлявся дефолт `nil`); у I4.md T4 перевірка опису в `extract.actionsdata`.
 - Відомо: якщо Siri скасує дію, `perform` може тривати до 8 с (очікування не реагує на скасування) — на токени/дані не впливає.
 - ⏳ Mac: `manual-tests/I4.md`; на iOS очікується 111 тестів.
+
+#### I5 — ітерація 1: PASS (умовний)
+- Експорт через `fileExporter` (`dictionary.json`, схема v1; AirDrop — через Files → «Поділитися»), імпорт через `fileImporter`: копія security-scoped файлу до читання, merge/replace (бекап перед replace), звіт D1, імпортовані pending — один прохід (1 запит/слово, повтор — 0). README: розділ `## iPhone` (EN/UK).
+- Tester: 18 тестів, 5/6 мутантів убито (шостий — подвійний захист ядра; без обох — убито).
+- Відхилення: експорт напряму через `DictionaryExporter` (не `exportDictionary(to:)`); ім'я як на macOS; копіювання до діалогу режиму.
+- Не зроблено (відомо): банер inbox недораховує при storage-помилці (зміна торкнулася б тесту ядра); `copyItem` без `NSFileCoordinator` (iCloud-файли, що не завантажені → можливий readFailed — перевірити на Mac).
+- Після рев'ю (оркестратор): `IOS_ALL.md` — без Local.xcconfig не вигадувати Team ID, гігієна без фікстур, очікувана кількість macOS-тестів; `README.uk.md` — українські мітки Mac.
+
+### Підсумок iOS
+- Усі етапи I0–I5 пройшли Developer → Tester → Judge (FAIL лише I0 ітерація 1). Linux: ядро 596, мобільний харнес 124.
+- **Жоден iOS-код ще не компілювався в Xcode.** Наступний крок — один прогін на Mac за `docs/development/manual-tests/IOS_ALL.md`; помилки компіляції повертаються оркестратору (окрема ітерація виправлень).
 
 ## Відкриті питання / невизначеності щодо macOS API
 
