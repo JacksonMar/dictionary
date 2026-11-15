@@ -21,7 +21,7 @@ enum StartVoiceCaptureRunner {
 /// Рядки метаданих читає система (DI17): ключ — англійський текст, переклад — `uk.lproj/Localizable.strings`.
 struct StartVoiceCaptureIntent: AppIntent {
     static let title: LocalizedStringResource = "Add by Voice"
-    static let description = IntentDescription("Opens VocabApp and starts listening for a word.")
+    static let description: IntentDescription? = IntentDescription("Opens VocabApp and starts listening for a word.")
     static let openAppWhenRun: Bool = true
 
     @Parameter(title: "Language")

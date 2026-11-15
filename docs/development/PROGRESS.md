@@ -21,7 +21,8 @@
 | I2a — Підказка мови в ядрі | done | 1 | PASS — Linux 574 тести (+22 LanguageHintTests); macOS-регресія — у Mac-промпт I2b |
 | I2b — Голосове введення (UI) | done (⏳ Mac) | 1 | PASS умовний — Linux 576 + 72 мобільні тести; Speech/AVFoundation/SwiftUI — Mac |
 | I3 — Share Extension + inbox | done (⏳ Mac) | 1 | PASS умовний — Linux 590 + 86 мобільних; розширення й App Group — Mac |
-| I4 — App Intents + віджет | in progress | – | – |
+| I4 — App Intents + віджет | done (⏳ Mac) | 1 | PASS умовний — Linux 596 + 106 мобільних; AppIntents/WidgetKit — Mac |
+| I5 — Експорт/імпорт, полірування, README | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -173,6 +174,14 @@ _(вердикти Judge — нижче по етапах)_
 - Ризик Mac: `VocabMobileTests` компілює файли розширення за шляхом без лінкування VocabCore → можливі `Undefined symbols` при dead-strip. Якщо станеться — **не** додавати `- package: VocabCore` у тести (дві копії стану L10n), а змусити застосунок посилатися на символи.
 - Перенесено (бажано, I5): тайм-аут ~5 с у `ShareViewController.loadCandidates` (лист може зависнути в «Збереження…»); банер недораховує при storage-помилці (failed = 1 при кількох залишених файлах).
 - ⏳ Mac: `manual-tests/I3.md`; на iOS очікується 90 тестів.
+
+#### I4 — ітерація 1: PASS (умовний)
+- `AddToDictionaryIntent` (у процесі застосунку, `AppContainer.shared`, 1 запит / дубль 0; через 8 с — «Збережено, перекладається», задача додавання не скасовується), `StartVoiceCaptureIntent` (спільний `AppContainer.router`), `VocabShortcuts` (фрази з `\(.applicationName)`, en/uk `AppShortcuts.strings`), віджет `VoiceCaptureWidget` (Home + Lock Screen, `vocabapp://voice`, без App Group), тайм-аут 5 с у Share Extension (перенесено з I3).
+- Tester: 22/22 мутанти вбито; багів немає.
+- Відхилення: DI17 розширено — `Mobile/Resources/*.lproj/Localizable.strings` для метаданих App Intents (без нього Shortcuts англійською на українському iPhone); `AddToDictionaryRunner.swift`; валідація тексту до завантаження словника; власний діалог порожнього тексту; без параметра мови у фразах Siri. Kind віджета змінено → спайк-віджет на телефоні треба видалити й додати новий.
+- Після рев'ю (оркестратор): `static let description: IntentDescription?` (тип як у вимозі протоколу, щоб не підставлявся дефолт `nil`); у I4.md T4 перевірка опису в `extract.actionsdata`.
+- Відомо: якщо Siri скасує дію, `perform` може тривати до 8 с (очікування не реагує на скасування) — на токени/дані не впливає.
+- ⏳ Mac: `manual-tests/I4.md`; на iOS очікується 111 тестів.
 
 ## Відкриті питання / невизначеності щодо macOS API
 

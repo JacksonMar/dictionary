@@ -11,7 +11,7 @@ import Foundation
 /// Рядки метаданих читає система (DI17): ключ — англійський текст, переклад — `uk.lproj/Localizable.strings`.
 struct AddToDictionaryIntent: AppIntent {
     static let title: LocalizedStringResource = "Add to Dictionary"
-    static let description = IntentDescription("Translates a word or a short phrase with Claude and saves it to VocabApp.")
+    static let description: IntentDescription? = IntentDescription("Translates a word or a short phrase with Claude and saves it to VocabApp.")
     static let openAppWhenRun: Bool = false
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
