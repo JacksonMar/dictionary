@@ -154,6 +154,46 @@ final class MobileCarryOverTests: XCTestCase {
         XCTAssertEqual(runner.startedNames.filter { $0 == "VocabProcessPending" }.count, 3)
     }
 
+    /// Judge note (I1b): `.foreground` fires on every activation (Control Center, alerts), so it must respect the
+    /// queue backoff — an entry that just got a 500 is not retried on each activation; `.keySaved`/`retryAll` still
+    /// ignore backoff.
+    @MainActor
+    func testRepeatedActivationRespectsBackoffAfterServerError() async throws {
+        let directory = makeTemporaryDirectory(self)
+        let pending = makeTestEntry("tree", status: .pending, createdOffset: 0)
+        try writeDictionary([pending], to: directory)
+        let sink = MobileCapturingLogSink()
+        let container = AppContainer(
+            paths: AppPaths(applicationSupportDirectory: directory),
+            settings: InMemorySettingsStore(),
+            secrets: InMemorySecretStore(values: [.anthropicAPIKey: MobileClaudeFixtures.apiKey]),
+            transport: MockURLProtocol.makeTransport(),
+            logSink: sink
+        )
+        let model = MobileAppModel(container: container)
+        MockURLProtocol.setReplies([MobileClaudeFixtures.http(500)])
+
+        await model.becameActive()
+        XCTAssertEqual(MockURLProtocol.requestCount, 1, "first activation sends the pending entry")
+        XCTAssertEqual(model.entry(id: pending.id)?.status, .pending)
+        let attempts = await container.queue.attemptCount(for: pending.id)
+        XCTAssertEqual(attempts, 1)
+
+        await model.becameActive()
+        await model.becameActive()
+        XCTAssertEqual(MockURLProtocol.requestCount, 1, "entry in backoff → 0 extra requests on repeated activation")
+        XCTAssertEqual(sink.lines.filter { $0.contains("Queue run started: trigger=foreground") }.count, 3)
+
+        // Explicit "Retry All" (pull to refresh) still ignores backoff: exactly one more request.
+        await model.retryAll()
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+
+        XCTAssertTrue(MobileAppModel.ignoresBackoff(.keySaved))
+        XCTAssertTrue(MobileAppModel.ignoresBackoff(.modelChanged))
+        XCTAssertTrue(MobileAppModel.ignoresBackoff(.displaySwitch))
+        XCTAssertFalse(MobileAppModel.ignoresBackoff(.foreground))
+    }
+
     @MainActor
     func testBecameActiveWithAllReadyMakesNoRequest() async throws {
         let directory = makeTemporaryDirectory(self)

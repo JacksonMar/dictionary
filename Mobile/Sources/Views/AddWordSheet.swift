@@ -45,6 +45,7 @@ struct AddWordSheet: View {
                             if isSaving {
                                 Spacer()
                                 ProgressView()
+                                    .accessibilityLabel(Text(L10n.text(.mobileAddWorking)))
                             }
                         }
                     }

@@ -369,8 +369,9 @@ final class MobileAppModel: ObservableObject {
     func processPending(trigger: ProcessingTrigger) async {
         logQueueStarted(trigger)
         let queue = container.queue
+        let ignoringBackoff = Self.ignoresBackoff(trigger)
         let results = await container.backgroundTasks.run(named: "VocabProcessPending") {
-            await queue.processAll(ignoringBackoff: true)
+            await queue.processAll(ignoringBackoff: ignoringBackoff)
         }
         logQueueFinished(trigger, results: results)
         if !results.isEmpty {
@@ -379,6 +380,13 @@ final class MobileAppModel: ObservableObject {
         if displayLanguageID != nil, Self.backfillTriggers.contains(trigger) {
             await runBackfill(trigger: trigger)
         }
+    }
+
+    /// `.foreground` спрацьовує на **кожну** активацію сцени (і після Control Center, системних алертів), тож він
+    /// поважає backoff черги й доповнення: запис, що щойно отримав 429/5xx, не повторюється на кожну активацію
+    /// (економія токенів, §8). Явні дії й нові умови (`.keySaved`, `.modelChanged`, `.displaySwitch`) — без backoff.
+    static func ignoresBackoff(_ trigger: ProcessingTrigger) -> Bool {
+        trigger != .foreground
     }
 
     // MARK: - Доповнення варіантів (M7)
@@ -408,8 +416,9 @@ final class MobileAppModel: ObservableObject {
         if eligible == 0 {
             report = VariantBackfillReport()
         } else {
+            let ignoringBackoff = Self.ignoresBackoff(trigger)
             report = await container.backgroundTasks.run(named: "VocabVariantBackfill") {
-                await backfill.backfill(pairID: pairID, languageID: languageID, ignoringBackoff: true)
+                await backfill.backfill(pairID: pairID, languageID: languageID, ignoringBackoff: ignoringBackoff)
             }
         }
         await finishBackfill(trigger, languageID: languageID, report: report)

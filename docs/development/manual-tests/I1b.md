@@ -32,7 +32,7 @@ xcodebuild test -project VocabApp.xcodeproj -scheme VocabMobile -destination 'pl
 | # | Крок | Очікуваний результат | Результат |
 |---|---|---|---|
 | T1 | macOS-регресія (`-scheme VocabApp`) | `** TEST SUCCEEDED **`, кількість тестів як до I1b (macOS-файли не змінювались; ядро — лише нові ключі `mobile.*`) | |
-| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`, **44** тести (41 з них Tester уже прогнав на Linux у харнесі; лише на iOS — hosted `AppLaunchTests` і Keychain-тести). Під Планом Б (`CODE_SIGNING_ALLOWED=NO`) Keychain-тести можуть падати з `-34018` (`errSecMissingEntitlement`) — це середовище (немає підпису/entitlements), не баг: записати й перевірити ключ вручну (розділ 2). Інша помилка — дослівно (файл:рядок) | |
+| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`, **45** тестів (42 з них Tester уже прогнав на Linux у харнесі; лише на iOS — hosted `AppLaunchTests` і Keychain-тести). Під Планом Б (`CODE_SIGNING_ALLOWED=NO`) Keychain-тести можуть падати з `-34018` (`errSecMissingEntitlement`) — це середовище (немає підпису/entitlements), не баг: записати й перевірити ключ вручну (розділ 2). Інша помилка — дослівно (файл:рядок) | |
 | T3 | Попередження збірки `VocabMobile` у `Mobile/Sources` і в спільних файлах `App/Sources/Platform/{KeychainSecretStore,OSLogSink,SpeechService}.swift`, `App/Sources/Views/RenderingLanguageTexts.swift` | Немає (записати дослівно, якщо є) | |
 | T4 | У навігаторі Xcode спільні файли показуються в таргеті `VocabMobile` (File inspector → Target Membership: `VocabApp` і `VocabMobile`) | Так | |
 
