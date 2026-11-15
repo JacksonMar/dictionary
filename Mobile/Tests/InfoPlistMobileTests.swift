@@ -2,6 +2,8 @@
 // Info.plist and localized in English and Ukrainian (`InfoPlist.strings` in en.lproj / uk.lproj of the app bundle).
 // Hosted only: reads `Bundle.main` (the VocabMobile app). The same files are checked on Linux by the core test
 // `InfoPlistLocalizationTests` (repository sources).
+// I4.3 (IOS_PLAN §7 I4): the built app registers the `vocabapp` URL scheme (`CFBundleURLTypes`) used by the voice
+// widget and deep links; Linux counterpart — core `MobileI4ResourcesTests`.
 #if os(iOS)
 import Foundation
 import XCTest
@@ -48,6 +50,19 @@ final class InfoPlistMobileTests: XCTestCase {
             XCTAssertTrue(uk.unicodeScalars.contains { (0x0400...0x04FF).contains($0.value) }, "uk \(key) is Cyrillic")
             XCTAssertFalse(en.unicodeScalars.contains { (0x0400...0x04FF).contains($0.value) }, "en \(key) has no Cyrillic")
         }
+    }
+
+    func testURLSchemeRegistered() throws {
+        let bundle = Bundle.main
+        XCTAssertTrue(bundle.bundleIdentifier?.hasSuffix(".VocabMobile") ?? false, "must run hosted in the app")
+        let info = try XCTUnwrap(bundle.infoDictionary)
+        let urlTypes = try XCTUnwrap(info["CFBundleURLTypes"] as? [[String: Any]], "CFBundleURLTypes missing")
+        let schemes = urlTypes.flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
+        XCTAssertTrue(schemes.contains(DeepLink.scheme), "registered schemes: \(schemes)")
+        XCTAssertEqual(DeepLink.scheme, "vocabapp")
+        // The registered scheme really routes (widget URL).
+        let widgetURL = try XCTUnwrap(URL(string: "\(DeepLink.scheme)://voice"))
+        XCTAssertEqual(DeepLink.parse(widgetURL), .voiceCapture(languageID: nil))
     }
 }
 #endif
