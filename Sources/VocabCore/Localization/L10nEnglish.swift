@@ -300,6 +300,21 @@ enum L10nEnglish {
         case .voiceSettingsSection: return "Voice Input"
         case .voiceSettingsDefaultLanguage: return "Default voice language"
         case .voiceSettingsHint: return "The language the microphone listens for; the EN | IT switch next to the microphone changes it too. Claude gets it as a hint, so words like “come” are looked up in the right language."
+        case .shareTitle: return "Add to VocabApp"
+        case .shareSaving: return "Saving…"
+        case .shareSaved: return "Saved — will be translated when you open VocabApp."
+        case .shareSavedTruncated: return "The shared text was longer than {max} characters, so only the beginning was saved."
+        case .shareEmpty: return "There is no text to save. Select a word or a short phrase and share it again."
+        case .shareFull: return "Too many words are waiting. Open VocabApp so it can take them, then try again."
+        case .shareUnavailable: return "The shared folder of VocabApp is not available, so the word was not saved. Reinstall the app from Xcode or add the word in VocabApp."
+        case .shareFailed: return "Could not save the word: {reason}"
+        case .shareDone: return "Done"
+        case .inboxBannerTitle: return "Words from Share"
+        case .inboxQueued: return "Added for translation: {count}"
+        case .inboxDuplicates: return "Already in the dictionary: {count}"
+        case .inboxRejected: return "Not added (empty, longer than 120 characters or more than 8 words): {count}"
+        case .inboxFailed: return "Not saved yet, will be retried next time you open the app: {count}"
+        case .inboxDismiss: return "Dismiss"
         }
     }
 }

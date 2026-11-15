@@ -53,7 +53,7 @@ targets:
       base: { GENERATE_INFOPLIST_FILE: YES, PRODUCT_BUNDLE_IDENTIFIER: com.vocabapp.VocabAppTests }
     dependencies:
       - target: VocabApp          # hosted tests: TEST_HOST = VocabApp.app
-  # MARK: iOS (I1a: the app and its tests depend on VocabCore; the extensions stay core-free)
+  # MARK: iOS (I1a: the app and its tests depend on VocabCore; I3: the Share extension too; the widget stays core-free)
   VocabMobile:
     type: application
     platform: iOS
@@ -88,7 +88,11 @@ targets:
   VocabShare:
     type: app-extension
     platform: iOS
-    sources: [Extensions/Share/Sources]
+    # I3: InboxLocation (App Group URL from Info.plist) is shared with the app by path, so both processes
+    # resolve the same <App Group>/Inbox directory.
+    sources:
+      - Extensions/Share/Sources
+      - Mobile/Sources/Platform/InboxLocation.swift
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig
@@ -101,6 +105,12 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: Extensions/Share/VocabShare.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
+    # I3 (IOS_PLAN DI7): InboxStore/InboxItem + L10n. VocabCore is Foundation-only (extension-safe). The app and
+    # the extension are separate executables, so linking the static product into both does not duplicate code
+    # inside one process.
+    dependencies:
+      - package: VocabCore
+        product: VocabCore
   VocabWidget:
     type: app-extension
     platform: iOS
@@ -120,7 +130,12 @@ targets:
   VocabMobileTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [Mobile/Tests]
+    # I3: the extension's UIKit-free logic is compiled into the tests by path (an app extension module cannot be
+    # imported by a unit-test bundle).
+    sources:
+      - Mobile/Tests
+      - Extensions/Share/Sources/ShareTextExtractor.swift
+      - Extensions/Share/Sources/ShareInboxWriter.swift
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig

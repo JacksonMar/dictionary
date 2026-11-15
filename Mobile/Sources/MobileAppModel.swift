@@ -61,6 +61,8 @@ final class MobileAppModel: ObservableObject {
     @Published private(set) var backupCount = 0
     /// I2b: мова голосу за замовчуванням (Налаштування); оновлює `refreshVoiceLanguage()`.
     @Published private(set) var voiceLanguage: VoiceLanguage
+    /// I3: звіт останнього непорожнього інжесту inbox «Поділитися» для `InboxBanner`; `nil` — банер приховано.
+    @Published private(set) var inboxReport: InboxIngestReport?
 
     let container: AppContainer
     /// Підписка на знімки репозиторію (для тестів — щоб перевірити, що вона одна).
@@ -120,13 +122,55 @@ final class MobileAppModel: ObservableObject {
         }
     }
 
-    /// `scenePhase == .active` (IOS_PLAN §4): `ensureLoaded()` → `processAll(.foreground)` → автодоповнення, якщо
-    /// режим мови варіанта. Повторні активації не дублюють запити: черга й доповнення самі відкидають паралельний
-    /// прохід (`isRunning`), записи в обробці не беруться вдруге.
+    /// `scenePhase == .active` (IOS_PLAN §4): `ensureLoaded()` → `ingest()` inbox → `processAll(.foreground)` →
+    /// автодоповнення, якщо режим мови варіанта. Повторні активації не дублюють запити: інжест single-flight, черга
+    /// й доповнення самі відкидають паралельний прохід (`isRunning`), записи в обробці не беруться вдруге.
     func becameActive() async {
         await start()
         guard isLoaded else { return }
+        await ingestInbox()
         await processPending(trigger: .foreground)
+    }
+
+    // MARK: - Inbox «Поділитися» (I3)
+
+    /// Забирає слова з inbox (`InboxIngestor.ingest()`, single-flight) у фоновій задачі (DI18). Немає inbox (App
+    /// Group недоступна) → `nil`, нічого не робить. Непорожній звіт замінює показаний у банері (одночасні виклики
+    /// отримують той самий звіт, тож банер не подвоюється); порожній — банер не чіпає.
+    @discardableResult
+    func ingestInbox() async -> InboxIngestReport? {
+        guard isLoaded, let ingestor = container.inboxIngestor else { return nil }
+        let report = await container.backgroundTasks.run(named: "VocabInboxIngest") {
+            await ingestor.ingest()
+        }
+        if !report.isEmpty {
+            inboxReport = report
+            await refreshEntries()
+        }
+        return report
+    }
+
+    /// Закриває банер інжесту.
+    func dismissInboxReport() {
+        inboxReport = nil
+    }
+
+    /// Inbox увімкнено (є App Group).
+    var isInboxAvailable: Bool {
+        container.inboxIngestor != nil
+    }
+
+    /// Рядки банера мовою інтерфейсу: лише ненульові лічильники (порядок: додано, дублі, відхилено, не збережено).
+    static func inboxBannerLines(for report: InboxIngestReport, language: AppLanguage = L10n.current) -> [String] {
+        let counts: [(Int, L10nKey)] = [
+            (report.queued, .inboxQueued),
+            (report.duplicates, .inboxDuplicates),
+            (report.rejected, .inboxRejected),
+            (report.failed, .inboxFailed),
+        ]
+        return counts.compactMap { count, key in
+            count > 0 ? L10n.text(key, ["count": String(count)], language: language) : nil
+        }
     }
 
     private func subscribeToChanges() {

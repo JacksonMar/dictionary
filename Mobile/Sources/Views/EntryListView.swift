@@ -4,7 +4,7 @@ import VocabCore
 /// Головний екран (IOS_PLAN §5 «Список»): `NavigationStack`, `.searchable`, сегментний перемикач EN | IT, меню
 /// сортування, «+» і шестерня, рядки `EntryRowView` з переходом до `EntryDetailView`, свайпи (трейлінг — «Видалити»
 /// з підтвердженням і «Редагувати»; лідинг — «Повторити» або «Оновити італійський»), `.refreshable` →
-/// «Повторити всі», порожній стан, стан помилки. Аркуші (додавання, Налаштування) — через `Router`.
+/// «Повторити всі», порожній стан, стан помилки, банер інжесту «Поділитися» (`InboxBanner`, I3). Аркуші (додавання, Налаштування) — через `Router`.
 /// Явний `@MainActor`: допоміжні властивості (не лише `body`) читають `@MainActor`-модель.
 @MainActor
 struct EntryListView: View {
@@ -100,6 +100,14 @@ struct EntryListView: View {
         .listStyle(.plain)
         .overlay {
             emptyOverlay
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // I3: підсумок інжесту «Поділитися» над списком (не перекривається порожнім станом).
+            if let report = model.inboxReport {
+                InboxBanner(report: report) {
+                    model.dismissInboxReport()
+                }
+            }
         }
         .searchable(text: $model.searchText, prompt: Text(L10n.text(.dictionarySearchPrompt)))
         .refreshable {

@@ -15,7 +15,7 @@ enum DictionaryLoadOutcome: Equatable, Sendable {
 /// Композиційний корінь iOS-застосунку (IOS_PLAN §2, §4): одне сховище, один `DictionaryRepository` (actor) на
 /// процес, налаштування, реєстр мовних пар, API-ключ (`SecretStore`), Claude (`ClaudeLookupService`), черга
 /// (`EntryProcessor` → `PendingQueueProcessor`), `AddWordUseCase`, доповнення варіантів (`VariantBackfillProcessor`),
-/// фонові задачі й озвучення. Композиція — як macOS `ClaudeServices.make` (`App/Sources/AppModel.swift`).
+/// фонові задачі, озвучення, inbox «Поділитися» (`InboxStore` → `InboxIngestor`, I3). Композиція — як macOS `ClaudeServices.make` (`App/Sources/AppModel.swift`).
 ///
 /// Завантаження — single-flight: перший `ensureLoaded()` створює й кешує `Task` з `repository.load()`; наступні
 /// виклики (UI, intent-и, повторний `.active`) чекають на той самий `Task`. Помилка кешується (як на macOS):
@@ -58,6 +58,10 @@ final class AppContainer {
     let audioSession: AudioSessionControlling?
     /// I2b: остання мова голосу (`UserDefaults`, ключ `voiceLanguage`; лише iOS-застосунок, DI12).
     let voiceLanguageStore: VoiceLanguageStoring
+    /// I3: inbox «Поділитися» в App Group (DI7); `nil` — App Group недоступна або тести без inbox (інжест вимкнено).
+    let inbox: InboxStore?
+    /// I3: інжест inbox (single-flight, §4); `nil` разом з `inbox`.
+    let inboxIngestor: InboxIngestor?
 
     private var loadTask: Task<DictionaryLoadOutcome, Never>?
     /// Результат завершеного завантаження; `nil` — ще не завантажено (або завантаження триває).
@@ -80,7 +84,8 @@ final class AppContainer {
         speech: SpeechSpeaking? = nil,
         speechRecognizer: SpeechRecognizing? = nil,
         audioSession: AudioSessionControlling? = nil,
-        voiceLanguageStore: VoiceLanguageStoring = InMemoryVoiceLanguageStore()
+        voiceLanguageStore: VoiceLanguageStoring = InMemoryVoiceLanguageStore(),
+        inboxDirectory: URL? = nil
     ) {
         self.paths = paths
         self.settings = settings
@@ -149,6 +154,21 @@ final class AppContainer {
         self.speechRecognizer = speechRecognizer
         self.audioSession = audioSession
         self.voiceLanguageStore = voiceLanguageStore
+        if let inboxDirectory {
+            let inbox = InboxStore(directory: inboxDirectory, fileSystem: fileSystem)
+            self.inbox = inbox
+            self.inboxIngestor = InboxIngestor(
+                store: inbox,
+                repository: repository,
+                processor: queue,
+                registry: registry,
+                settings: settings,
+                logger: logger
+            )
+        } else {
+            self.inbox = nil
+            self.inboxIngestor = nil
+        }
     }
 
     /// Контейнер над каталогом даних `baseDirectory` (`dictionary.json` і `Backups/` усередині). Тести Claude
@@ -157,20 +177,22 @@ final class AppContainer {
         baseDirectory: URL,
         settings: SettingsStore,
         secrets: SecretStore = InMemorySecretStore(),
-        transport: HTTPTransport? = nil
+        transport: HTTPTransport? = nil,
+        inboxDirectory: URL? = nil
     ) {
         self.init(
             paths: AppPaths(applicationSupportDirectory: baseDirectory),
             settings: settings,
             secrets: secrets,
-            transport: transport
+            transport: transport,
+            inboxDirectory: inboxDirectory
         )
     }
 
     /// Реальні шляхи (`<контейнер>/Library/Application Support/VocabApp`, DI6), `UserDefaults.standard`, Keychain
     /// (`service` = bundle id застосунку, DI8), unified logging, фонові задачі (DI18), озвучення, розпізнавання
-    /// мовлення й аудіосесія (I2b). Під XCTest — унікальний тимчасовий каталог, `InMemorySettingsStore`,
-    /// `InMemorySecretStore`, мова голосу в пам'яті, без фонових задач, звуку й мікрофона (hosted-тести ніколи не чіпають справжній словник, `UserDefaults` і Keychain).
+    /// мовлення й аудіосесія (I2b), inbox «Поділитися» в App Group (I3; немає групи → без inbox). Під XCTest — унікальний тимчасовий каталог, `InMemorySettingsStore`,
+    /// `InMemorySecretStore`, мова голосу в пам'яті, без inbox, фонових задач, звуку й мікрофона (hosted-тести ніколи не чіпають справжній словник, `UserDefaults` і Keychain).
     static func makeLive(environment: [String: String]) -> AppContainer {
         if environment[xcTestEnvironmentKey] != nil {
             let directory = FileManager.default.temporaryDirectory
@@ -186,7 +208,8 @@ final class AppContainer {
             speech: LivePlatform.makeSpeech(),
             speechRecognizer: LivePlatform.makeSpeechRecognizer(),
             audioSession: LivePlatform.makeAudioSessionController(),
-            voiceLanguageStore: UserDefaultsVoiceLanguageStore(defaults: .standard)
+            voiceLanguageStore: UserDefaultsVoiceLanguageStore(defaults: .standard),
+            inboxDirectory: InboxLocation.live()
         )
     }
 

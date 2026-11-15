@@ -1,111 +1,73 @@
-// SPIKE CODE (IOS_PLAN.md stage I0) — replaced in I3 (inbox + ShareTextExtractor).
-//
-// Writes one probe file `share-<timestampMs>-<uuid>.txt` with the shared text (or a marker) into the App Group
-// container, atomically (temporary file + move), then closes the share sheet. Never crashes when the App Group is
-// unavailable: the request is completed in every path.
-
+import Foundation
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import VocabCore
 import os
 
+/// Share Extension «VocabApp» (IOS_PLAN DI7, DI9, §3.3, I3). Читає вхідні елементи листа «Поділитися»
+/// (`attributedContentText`, вкладення `public.plain-text`; URL ігнорується) → `ShareTextExtractor` →
+/// `ShareInboxWriter` (файл у `<App Group>/Inbox/`) → коротке підтвердження (`ShareView`) → `completeRequest`.
+///
+/// Claude не викликається, Keychain і словник не чіпаються: слово перекладе застосунок при наступній активації.
+/// Запит завершується за будь-якого результату (успіх — автоматично через ~1,2 с або кнопкою «Готово»).
+/// Мова — мова системи (`ShareInboxWriter.interfaceLanguage`): налаштування застосунку розширенню недоступні.
+/// У лог — лише вид результату, ніколи не текст.
 final class ShareViewController: UIViewController {
-    /// Same values as `AppGroupProbe` in the app target (no shared code in the spike).
-    private static let infoPlistKey = "VocabAppGroupID"
-    private static let probeDirectoryName = "SpikeProbes"
-    private static let maxTextLength = 2000
+    private static let autoCloseDelay: TimeInterval = 1.2
 
-    private let logger = Logger(subsystem: "VocabShare", category: "spike")
+    private let logger = Logger(subsystem: "VocabShare", category: "share")
+    private var model: ShareViewModel?
     private var didStart = false
     private var didComplete = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
+
+        let language = ShareInboxWriter.interfaceLanguage()
+        L10n.setCurrent(language)
+        let model = ShareViewModel(language: language) { [weak self] in
+            self?.finish()
+        }
+        self.model = model
+
+        let host = UIHostingController(rootView: ShareView(model: model))
+        host.view.backgroundColor = .clear
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         guard !didStart else { return }
         didStart = true
-        loadSharedText { [weak self] text in
-            guard let self else { return }
-            self.writeProbe(text: text)
-            self.finish()
+        Self.loadCandidates(from: extensionContext?.inputItems ?? []) { [weak self] candidates in
+            self?.save(candidates)
         }
     }
 
-    // MARK: - Input
+    // MARK: - Save
 
-    /// Calls `completion` exactly once on the main queue with the shared text, or `nil` if none was found.
-    private func loadSharedText(completion: @escaping (String?) -> Void) {
-        let items = extensionContext?.inputItems.compactMap { $0 as? NSExtensionItem } ?? []
-
-        for item in items {
-            if let text = item.attributedContentText?.string, !text.isEmpty {
-                completion(text)
-                return
+    private func save(_ candidates: [ShareTextCandidate]) {
+        let extraction = ShareTextExtractor.extract(from: candidates)
+        let outcome = ShareInboxWriter.save(extraction, directory: InboxLocation.live())
+        logger.info("Share finished: \(Self.logName(outcome), privacy: .public)")
+        model?.show(outcome)
+        if outcome.isSuccess {
+            let delay = UInt64(Self.autoCloseDelay * 1_000_000_000)
+            Task<Void, Never> { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: delay)
+                self?.finish()
             }
-        }
-
-        let plainText = UTType.plainText.identifier
-        let provider = items
-            .flatMap { $0.attachments ?? [] }
-            .first { $0.hasItemConformingToTypeIdentifier(plainText) }
-        guard let provider else {
-            completion(nil)
-            return
-        }
-        provider.loadItem(forTypeIdentifier: plainText, options: nil) { item, error in
-            let text: String?
-            if let string = item as? String {
-                text = string
-            } else if let attributed = item as? NSAttributedString {
-                text = attributed.string
-            } else if let data = item as? Data {
-                text = String(data: data, encoding: .utf8)
-            } else {
-                text = nil
-            }
-            if let error {
-                Logger(subsystem: "VocabShare", category: "spike")
-                    .error("loadItem failed: \(error.localizedDescription, privacy: .public)")
-            }
-            DispatchQueue.main.async {
-                completion(text)
-            }
-        }
-    }
-
-    // MARK: - Output
-
-    private func writeProbe(text: String?) {
-        let rawGroupID = Bundle.main.object(forInfoDictionaryKey: Self.infoPlistKey) as? String
-        guard let groupID = rawGroupID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !groupID.isEmpty, !groupID.contains("$(") else {
-            logger.error("No App Group ID in Info.plist")
-            return
-        }
-        let fileManager = FileManager.default
-        guard let container = fileManager.containerURL(forSecurityApplicationGroupIdentifier: groupID) else {
-            logger.error("App Group container unavailable for \(groupID, privacy: .public)")
-            return
-        }
-
-        let directory = container.appendingPathComponent(Self.probeDirectoryName, isDirectory: true)
-        let uuid = UUID().uuidString
-        let timestampMs = Int64((Date().timeIntervalSince1970 * 1000).rounded())
-        let temporaryURL = directory.appendingPathComponent(".\(uuid).tmp")
-        let finalURL = directory.appendingPathComponent("share-\(timestampMs)-\(uuid).txt")
-        let body = text.map { String($0.prefix(Self.maxTextLength)) } ?? "<marker: no text in share input>"
-
-        do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            try Data(body.utf8).write(to: temporaryURL)
-            try fileManager.moveItem(at: temporaryURL, to: finalURL)
-            logger.info("Probe written: \(finalURL.lastPathComponent, privacy: .public)")
-        } catch {
-            try? fileManager.removeItem(at: temporaryURL)
-            logger.error("Probe write failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -113,5 +75,97 @@ final class ShareViewController: UIViewController {
         guard !didComplete else { return }
         didComplete = true
         extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+    }
+
+    private static func logName(_ outcome: ShareSaveOutcome) -> String {
+        switch outcome {
+        case .saved(let truncated):
+            return truncated ? "saved truncated" : "saved"
+        case .empty:
+            return "empty"
+        case .unavailable:
+            return "appGroupUnavailable"
+        case .full:
+            return "inboxFull"
+        case .failed:
+            return "storageFailed"
+        }
+    }
+
+    // MARK: - Input
+
+    /// Кандидати в порядку елементів: `attributedContentText` кожного елемента і текст кожного вкладення
+    /// `public.plain-text`. URL-вкладення не читаються (`ShareTextExtractor` їх однаково ігнорує). `completion` —
+    /// рівно один раз, на головній черзі. `nonisolated`: колбеки `loadItem` приходять з довільних черг.
+    private nonisolated static func loadCandidates(
+        from inputItems: [Any],
+        completion: @escaping @MainActor @Sendable ([ShareTextCandidate]) -> Void
+    ) {
+        let items = inputItems.compactMap { $0 as? NSExtensionItem }
+        let collector = CandidateCollector()
+        let group = DispatchGroup()
+        let plainText = UTType.plainText.identifier
+
+        for item in items {
+            if let text = item.attributedContentText?.string, !text.isEmpty {
+                collector.append(.attributedContentText(text), order: collector.nextOrder())
+            }
+            for provider in item.attachments ?? [] where provider.hasItemConformingToTypeIdentifier(plainText) {
+                let order = collector.nextOrder()
+                group.enter()
+                provider.loadItem(forTypeIdentifier: plainText, options: nil) { loaded, error in
+                    if let text = Self.string(from: loaded) {
+                        collector.append(.plainText(text), order: order)
+                    } else if error != nil {
+                        Logger(subsystem: "VocabShare", category: "share").error("Plain-text attachment not loaded")
+                    }
+                    group.leave()
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            MainActor.assumeIsolated {
+                completion(collector.candidates())
+            }
+        }
+    }
+
+    private nonisolated static func string(from item: NSSecureCoding?) -> String? {
+        if let string = item as? String {
+            return string
+        }
+        if let attributed = item as? NSAttributedString {
+            return attributed.string
+        }
+        if let data = item as? Data {
+            return String(data: data, encoding: .utf8)
+        }
+        return nil
+    }
+}
+
+/// Потокобезпечний збирач кандидатів: колбеки `loadItem` приходять з довільних черг; порядок — за `order`.
+private final class CandidateCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counter = 0
+    private var entries: [(order: Int, candidate: ShareTextCandidate)] = []
+
+    func nextOrder() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        counter += 1
+        return counter
+    }
+
+    func append(_ candidate: ShareTextCandidate, order: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.append((order, candidate))
+    }
+
+    func candidates() -> [ShareTextCandidate] {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.sorted { $0.order < $1.order }.map(\.candidate)
     }
 }

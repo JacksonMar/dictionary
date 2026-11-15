@@ -300,6 +300,21 @@ enum L10nUkrainian {
         case .voiceSettingsSection: return "Голосове введення"
         case .voiceSettingsDefaultLanguage: return "Мова голосу за замовчуванням"
         case .voiceSettingsHint: return "Мова, яку слухає мікрофон; перемикач EN | IT біля мікрофона теж її змінює. Claude отримує її як підказку, тож слова на кшталт «come» перекладаються з правильної мови."
+        case .shareTitle: return "Додати у VocabApp"
+        case .shareSaving: return "Збереження…"
+        case .shareSaved: return "Збережено — переклад з'явиться, коли ви відкриєте VocabApp."
+        case .shareSavedTruncated: return "Текст був довшим за {max} символів, тому збережено лише початок."
+        case .shareEmpty: return "Немає тексту для збереження. Виділіть слово або коротку фразу й поділіться ще раз."
+        case .shareFull: return "Забагато слів чекає на обробку. Відкрийте VocabApp, щоб він їх забрав, і спробуйте ще раз."
+        case .shareUnavailable: return "Спільна папка VocabApp недоступна, тому слово не збережено. Перевстановіть застосунок з Xcode або додайте слово у VocabApp."
+        case .shareFailed: return "Не вдалося зберегти слово: {reason}"
+        case .shareDone: return "Готово"
+        case .inboxBannerTitle: return "Слова з «Поділитися»"
+        case .inboxQueued: return "Додано на переклад: {count}"
+        case .inboxDuplicates: return "Уже є в словнику: {count}"
+        case .inboxRejected: return "Не додано (порожньо, довше за 120 символів або більше 8 слів): {count}"
+        case .inboxFailed: return "Ще не збережено, повторна спроба під час наступного відкриття: {count}"
+        case .inboxDismiss: return "Закрити"
         }
     }
 }

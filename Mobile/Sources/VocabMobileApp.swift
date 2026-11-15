@@ -4,8 +4,8 @@ import VocabCore
 /// Точка входу iOS-застосунку (IOS_PLAN §2, §4). Композиція — `AppContainer.shared`; мова інтерфейсу — з налаштувань
 /// на старті й миттєво після зміни (DI14: `L10n.setCurrent` у моделі + `.id(interfaceLanguage)` на корені, тож усе
 /// дерево перебудовується з новими текстами; відкритий аркуш Налаштувань відновлюється з `Router`).
-/// `scenePhase == .active` (зокрема перший запуск) → `MobileAppModel.becameActive()`: завантаження →
-/// `processAll(.foreground)` → автодоповнення в режимі IT.
+/// `scenePhase == .active` (зокрема перший запуск) → `MobileAppModel.becameActive()`: завантаження → інжест inbox
+/// «Поділитися» (I3) → `processAll(.foreground)` → автодоповнення в режимі IT.
 /// Явний `@MainActor`: `init()` звертається до `AppContainer.shared` і створює `@MainActor`-моделі синхронно
 /// (не покладаємося на те, чи анотовано протокол `App` у конкретному SDK).
 @main

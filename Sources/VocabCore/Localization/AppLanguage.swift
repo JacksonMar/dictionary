@@ -17,6 +17,25 @@ public enum AppLanguage: String, CaseIterable, Sendable {
         self = AppLanguage(rawValue: trimmed) ?? .default
     }
 
+    /// Мова за списком мов системи (`Locale.preferredLanguages`, напр. `["uk-UA", "en-US"]`): перша підтримувана
+    /// за порядком переваги; жодної → `.default`. Для процесів, які не бачать налаштувань застосунку (Share
+    /// Extension: `UserDefaults` застосунку йому недоступні, IOS_PLAN I3).
+    public init(preferredLanguages: [String]) {
+        for identifier in preferredLanguages {
+            let code = identifier
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .split(whereSeparator: { $0 == "-" || $0 == "_" })
+                .first
+                .map(String.init) ?? ""
+            if let language = AppLanguage(rawValue: code) {
+                self = language
+                return
+            }
+        }
+        self = .default
+    }
+
     /// Автонім — назва мови нею самою (не ключ таблиці, щоб користувач знайшов свою мову за будь-якого UI).
     public var nativeName: String {
         switch self {

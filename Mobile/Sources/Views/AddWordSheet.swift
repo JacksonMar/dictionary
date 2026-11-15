@@ -65,9 +65,6 @@ struct AddWordSheet: View {
                     isFieldFocused = true
                 }
             }
-            .onDisappear {
-                voice.cancel()
-            }
             .onChange(of: voice.phase) { (_: VoiceCaptureModel.Phase, newPhase: VoiceCaptureModel.Phase) in
                 if newPhase != .idle {
                     isFieldFocused = false
@@ -83,6 +80,11 @@ struct AddWordSheet: View {
             }
         }
         .interactiveDismissDisabled(isSaving || voice.phase == .submitting)
+        // На рівні аркуша, а не `Form`: перехід «Заповнити вручну» (push у `NavigationStack`) ховає `Form`, але
+        // аркуш лишається — мікрофон зупиняється лише тоді, коли закривається сам аркуш (I2b → I3).
+        .onDisappear {
+            voice.cancel()
+        }
     }
 
     @ViewBuilder
