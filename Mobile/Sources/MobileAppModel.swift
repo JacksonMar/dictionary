@@ -67,7 +67,8 @@ final class MobileAppModel: ObservableObject {
     private(set) var backfillTask: Task<Void, Never>?
     /// Остання обробка черги, запущена з Налаштувань (ключ збережено / модель змінено) — для тестів.
     private(set) var settingsProcessingTask: Task<Void, Never>?
-    private var didReadAPIKey = false
+    /// Single-flight `start()`.
+    private var startTask: Task<Void, Never>?
 
     init(container: AppContainer) {
         self.container = container
@@ -82,24 +83,36 @@ final class MobileAppModel: ObservableObject {
     // MARK: - Завантаження й активація
 
     /// Завантажує словник через single-flight `AppContainer.ensureLoaded()` і підписується на зміни репозиторію.
-    /// Повторні виклики (повторний `.task`, повернення на передній план) нічого не дублюють.
+    /// Повторні виклики (повторний `.task`, повернення на передній план) нічого не дублюють. Single-flight: перший
+    /// виклик кешує `Task`, решта чекають на нього, тож кожен викликач повертається лише тоді, коли `entries`, `isLoaded`
+    /// і підписка вже встановлені (без «порожнього словника» на мить при одночасних `.task` і `becameActive()`).
     func start() async {
-        if !didReadAPIKey {
-            didReadAPIKey = true
-            refreshAPIKeyState()
+        if let existing = startTask {
+            await existing.value
+            return
         }
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performStart()
+        }
+        startTask = task
+        await task.value
+    }
+
+    private func performStart() async {
+        refreshAPIKeyState()
         let outcome = await container.ensureLoaded()
-        guard !isLoaded else { return }
         switch outcome {
         case .failed(let message):
             loadError = message
         case .loaded(let recoveredBackupURL):
+            // `entries` — до `isLoaded`, щоб UI ніколи не бачив завантажений, але порожній словник.
+            entries = await container.repository.allEntries()
             loadError = nil
-            isLoaded = true
             if let recoveredBackupURL {
                 loadWarning = L10n.text(.modelLoadRecovered, ["path": recoveredBackupURL.path])
             }
-            entries = await container.repository.allEntries()
+            isLoaded = true
             subscribeToChanges()
         }
     }

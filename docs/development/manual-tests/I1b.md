@@ -32,7 +32,7 @@ xcodebuild test -project VocabApp.xcodeproj -scheme VocabMobile -destination 'pl
 | # | Крок | Очікуваний результат | Результат |
 |---|---|---|---|
 | T1 | macOS-регресія (`-scheme VocabApp`) | `** TEST SUCCEEDED **`, кількість тестів як до I1b (macOS-файли не змінювались; ядро — лише нові ключі `mobile.*`) | |
-| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **` (кількість — за звітом Tester). Якщо ❌ — помилку дослівно (файл:рядок) | |
+| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`, **44** тести (41 з них Tester уже прогнав на Linux у харнесі; лише на iOS — hosted `AppLaunchTests` і Keychain-тести). Під Планом Б (`CODE_SIGNING_ALLOWED=NO`) Keychain-тести можуть падати з `-34018` (`errSecMissingEntitlement`) — це середовище (немає підпису/entitlements), не баг: записати й перевірити ключ вручну (розділ 2). Інша помилка — дослівно (файл:рядок) | |
 | T3 | Попередження збірки `VocabMobile` у `Mobile/Sources` і в спільних файлах `App/Sources/Platform/{KeychainSecretStore,OSLogSink,SpeechService}.swift`, `App/Sources/Views/RenderingLanguageTexts.swift` | Немає (записати дослівно, якщо є) | |
 | T4 | У навігаторі Xcode спільні файли показуються в таргеті `VocabMobile` (File inspector → Target Membership: `VocabApp` і `VocabMobile`) | Так | |
 
@@ -100,6 +100,7 @@ xcodebuild test -project VocabApp.xcodeproj -scheme VocabMobile -destination 'pl
 |---|---|---|---|
 | P1 | Налаштування → «Data» | «Dictionary folder» — шлях усередині контейнера застосунку (`…/Library/Application Support/VocabApp`); «Backups» — число (0, якщо зіпсованих файлів не було) | |
 | P2 | Закрити застосунок свайпом, запустити знову | Усі додані/змінені записи на місці, видалені — відсутні, статуси ті самі | |
+| P2a | Запуск із **непорожнім** словником (кілька разів, холодний старт) | Одразу список (або короткий «Loading the dictionary…»); **жодного** миготіння порожнього стану «No Words Yet» перед списком | |
 | P3 | Додати слово через Claude і **одразу** згорнути застосунок (кнопка Home / свайп угору) до закриття аркуша | Повернувшись — слово ready (запит завершився у фоні, DI18) або pending, яке стане ready на `trigger=foreground`. Слово не загубилось | |
 | P4 | (iPhone) Перезапуск телефону, відкрити застосунок | Ключ і записи на місці (Keychain `WhenUnlocked`) | |
 
