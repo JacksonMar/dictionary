@@ -4,6 +4,11 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>uk</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>VocabApp</string>
 	<key>CFBundleExecutable</key>
@@ -33,6 +38,10 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VocabApp listens to the microphone only while you add a word by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VocabApp turns the word you say into text so it can be added to your dictionary. When this iPhone has no offline speech model for the language, the audio is recognized by Apple.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

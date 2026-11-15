@@ -2,8 +2,8 @@ import SwiftUI
 import VocabCore
 
 /// Налаштування (IOS_PLAN §5, `Form`): API-ключ (`SecureField`, зберегти/видалити, статус; лише Keychain, DI8),
-/// модель (+ скидання), мова інтерфейсу (миттєво, DI14), дані (шлях і кількість резервних копій). Теми немає (DI19);
-/// експорт/імпорт — I5, мова голосу — I2b.
+/// модель (+ скидання), мова голосу за замовчуванням (I2b, `voiceLanguage`), мова інтерфейсу (миттєво, DI14), дані
+/// (шлях і кількість резервних копій). Теми немає (DI19); експорт/імпорт — I5.
 @MainActor
 struct SettingsView: View {
     @ObservedObject var model: MobileAppModel
@@ -17,6 +17,7 @@ struct SettingsView: View {
             Form {
                 apiKeySection
                 modelSection
+                voiceSection
                 languageSection
                 dataSection
             }
@@ -32,6 +33,7 @@ struct SettingsView: View {
             .onAppear {
                 model.refreshAPIKeyState()
                 model.refreshStorageInfo()
+                model.refreshVoiceLanguage()
                 modelInput = model.modelName
             }
         }
@@ -92,6 +94,21 @@ struct SettingsView: View {
         }
     }
 
+    private var voiceSection: some View {
+        Section {
+            Picker(L10n.text(.voiceSettingsDefaultLanguage), selection: voiceLanguageBinding) {
+                ForEach(VoiceLanguage.allCases) { (language: VoiceLanguage) in
+                    Text(verbatim: language.displayName() + " (" + language.shortTitle + ")")
+                        .tag(language)
+                }
+            }
+        } header: {
+            Text(L10n.text(.voiceSettingsSection))
+        } footer: {
+            Text(L10n.text(.voiceSettingsHint))
+        }
+    }
+
     private var languageSection: some View {
         Section {
             Picker(AppLanguage.pickerLabel, selection: interfaceLanguageBinding) {
@@ -135,6 +152,15 @@ struct SettingsView: View {
             get: { model.interfaceLanguage },
             set: { (language: AppLanguage) in
                 model.setInterfaceLanguage(language)
+            }
+        )
+    }
+
+    private var voiceLanguageBinding: Binding<VoiceLanguage> {
+        Binding<VoiceLanguage>(
+            get: { model.voiceLanguage },
+            set: { (language: VoiceLanguage) in
+                model.setVoiceLanguage(language)
             }
         )
     }

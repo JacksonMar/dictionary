@@ -28,7 +28,7 @@ struct VocabMobileApp: App {
                 .id(model.interfaceLanguage)
                 .environmentObject(router)
                 .onOpenURL { (url: URL) in
-                    // Невідомий URL ігнорується; `voice` до I2b відкриває аркуш додавання без мікрофона.
+                    // Невідомий URL ігнорується; `voice` відкриває аркуш додавання в режимі голосу (I2b).
                     _ = router.open(url: url)
                 }
         }

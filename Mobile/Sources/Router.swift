@@ -3,8 +3,8 @@ import Foundation
 import Combine
 #endif
 
-/// Екран/аркуш, який треба показати (IOS_PLAN §2, §4). `voiceCapture` до I2b відкриває звичайний аркуш додавання
-/// (без мікрофона). `settings` — аркуш Налаштувань: маршрут живе поза коренем UI, тож після зміни мови інтерфейсу
+/// Екран/аркуш, який треба показати (IOS_PLAN §2, §4). `voiceCapture` відкриває аркуш додавання в режимі голосу
+/// (I2b): аркуш забирає запит `takeVoiceCapture()` і одразу слухає, якщо дозволи вже є. `settings` — аркуш Налаштувань: маршрут живе поза коренем UI, тож після зміни мови інтерфейсу
 /// (DI14, `.id(interfaceLanguage)`) перебудований список знову показує відкриті Налаштування.
 enum AppRoute: Equatable, Sendable {
     case list
@@ -24,6 +24,12 @@ enum AppRoute: Equatable, Sendable {
             return .settings
         }
     }
+}
+
+/// Запит голосового запуску з глибокого посилання / intent-а (`Router.takeVoiceCapture()`).
+struct VoiceCaptureLaunch: Equatable, Sendable {
+    /// `"en"` / `"it"` або `nil` (остання вибрана мова голосу).
+    let languageID: String?
 }
 
 /// Аркуш поверх списку (`.sheet(item:)`).
@@ -83,6 +89,15 @@ final class Router: ObservableObject {
 
     func dismiss() {
         route = .list
+    }
+
+    /// I2b: аркуш додавання забирає запит голосового запуску. Для `.voiceCapture(languageID)` маршрут стає
+    /// `.addSheet` (аркуш лишається відкритим — `sheet` той самий) і повертається мова з посилання (`nil` — остання
+    /// вибрана); інакше — `nil`. Повторне посилання `vocabapp://voice` знову змінить маршрут і запустить слухання.
+    func takeVoiceCapture() -> VoiceCaptureLaunch? {
+        guard case .voiceCapture(let languageID) = route else { return nil }
+        route = .addSheet
+        return VoiceCaptureLaunch(languageID: languageID)
     }
 
     /// Прив'язка `.sheet(item:)`: показ — маршрут аркуша; закриття (свайп униз) → `.list`.

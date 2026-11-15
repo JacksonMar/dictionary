@@ -1,0 +1,4 @@
+/* Системні запити дозволів і назва на початковому екрані (IOS_PLAN DI17). Ключі — ключі Info.plist. */
+"CFBundleDisplayName" = "VocabApp";
+"NSMicrophoneUsageDescription" = "VocabApp слухає мікрофон лише тоді, коли ви додаєте слово голосом.";
+"NSSpeechRecognitionUsageDescription" = "VocabApp перетворює сказане слово на текст, щоб додати його до словника. Якщо на цьому iPhone немає офлайн-моделі мовлення для цієї мови, аудіо розпізнає Apple.";

@@ -36,6 +36,9 @@ struct EntryListView: View {
                 .navigationDestination(for: UUID.self) { (id: UUID) in
                     EntryDetailView(model: model, entryID: id)
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    voiceButton
+                }
         }
         .task {
             await model.start()
@@ -243,7 +246,7 @@ struct EntryListView: View {
     private func sheetContent(_ sheet: AppSheet) -> some View {
         switch sheet {
         case .addWord:
-            AddWordSheet(model: model)
+            AddWordSheet(model: model, router: router)
         case .settings:
             SettingsView(model: model)
         }
@@ -256,6 +259,26 @@ struct EntryListView: View {
             router.open(.settings)
         } label: {
             Label(L10n.text(.windowSettings), systemImage: "gearshape")
+        }
+    }
+
+    /// Плаваюча кнопка мікрофона (IOS_PLAN §5): аркуш додавання в режимі голосу (як `vocabapp://voice`).
+    @ViewBuilder
+    private var voiceButton: some View {
+        if model.isLoaded {
+            Button {
+                router.open(.voiceCapture(languageID: nil))
+            } label: {
+                Image(systemName: "mic.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.white)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(Color.accentColor))
+                    .shadow(radius: 3)
+            }
+            .buttonStyle(.plain)
+            .padding(20)
+            .accessibilityLabel(Text(L10n.text(.voiceAddWithVoice)))
         }
     }
 

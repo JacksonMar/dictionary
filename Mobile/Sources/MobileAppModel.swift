@@ -59,6 +59,8 @@ final class MobileAppModel: ObservableObject {
     @Published private(set) var interfaceLanguage: AppLanguage
     /// Кількість резервних копій (Налаштування → Дані); оновлює `refreshStorageInfo()`.
     @Published private(set) var backupCount = 0
+    /// I2b: мова голосу за замовчуванням (Налаштування); оновлює `refreshVoiceLanguage()`.
+    @Published private(set) var voiceLanguage: VoiceLanguage
 
     let container: AppContainer
     /// Підписка на знімки репозиторію (для тестів — щоб перевірити, що вона одна).
@@ -78,6 +80,7 @@ final class MobileAppModel: ObservableObject {
         self.displayLanguageID = Self.validatedLanguageID(settings.displayLanguageID, pair: pair)
         self.modelName = settings.model
         self.interfaceLanguage = settings.interfaceLanguage
+        self.voiceLanguage = container.voiceLanguageStore.voiceLanguage
     }
 
     // MARK: - Завантаження й активація
@@ -608,6 +611,31 @@ final class MobileAppModel: ObservableObject {
         return rendering.speechLanguageCode
     }
 
+    // MARK: - Голосове введення (I2b)
+
+    /// Мова голосу за замовчуванням (Налаштування) — те саме значення (`voiceLanguage`), що й перемикач EN | IT біля
+    /// мікрофона. Перечитує сховище: перемикач у аркуші додавання пише туди напряму.
+    func refreshVoiceLanguage() {
+        voiceLanguage = container.voiceLanguageStore.voiceLanguage
+    }
+
+    func setVoiceLanguage(_ language: VoiceLanguage) {
+        container.voiceLanguageStore.voiceLanguage = language
+        voiceLanguage = language
+    }
+
+    /// Нова модель голосового введення для аркуша додавання (залежності — з контейнера; таймери — `Task.sleep`).
+    func makeVoiceCaptureModel(scheduler: VoiceTimerScheduling? = nil) -> VoiceCaptureModel {
+        VoiceCaptureModel(
+            recognizer: container.speechRecognizer,
+            submitter: self,
+            languageStore: container.voiceLanguageStore,
+            scheduler: scheduler ?? TaskVoiceTimerScheduler(),
+            speech: container.speech,
+            audioSession: container.audioSession
+        )
+    }
+
     // MARK: - Логи
 
     /// Лог черги: лише тригер, UUID і лічильники (`QueueLog`), без слів, помилок і ключа.
@@ -668,5 +696,22 @@ final class MobileAppModel: ObservableObject {
 
     private static func secretErrorMessage(_ error: Error) -> String {
         (error as? SecretStoreError)?.userMessage ?? L10n.text(.settingsErrorUnknown)
+    }
+}
+
+// MARK: - VoiceWordSubmitting
+
+extension MobileAppModel: VoiceWordSubmitting {
+    /// «Додати» в голосовому введенні (DI11, iU15 = (а)): рівно один виклик
+    /// `AddWordUseCase.execute(rawText:sourceLanguageHint:)` з мовою мовлення як підказкою (DI13) у фоновій задачі
+    /// (DI18). Токени — як для введеного слова: 1 запит на нове слово, 0 на дубль. `operationError` не змінюється —
+    /// результат показує картка голосового введення.
+    func submitVoiceWord(_ rawText: String, languageHint: String) async -> AddWordOutcome {
+        let addWord = container.addWord
+        let outcome = await container.backgroundTasks.run(named: "VocabAddVoiceWord") {
+            await addWord.execute(rawText: rawText, sourceLanguageHint: languageHint)
+        }
+        await refreshEntries()
+        return outcome
     }
 }

@@ -52,6 +52,12 @@ final class AppContainer {
     let backgroundTasks: BackgroundTaskRunning
     /// `nil` — озвучення недоступне (тести, Linux).
     let speech: SpeechSpeaking?
+    /// I2b: розпізнавання мовлення (`SFSpeechRecognizer`); `nil` — недоступне (тести, Linux).
+    let speechRecognizer: SpeechRecognizing?
+    /// I2b: аудіосесія запис ↔ відтворення; `nil` — не керуємо (тести, Linux).
+    let audioSession: AudioSessionControlling?
+    /// I2b: остання мова голосу (`UserDefaults`, ключ `voiceLanguage`; лише iOS-застосунок, DI12).
+    let voiceLanguageStore: VoiceLanguageStoring
 
     private var loadTask: Task<DictionaryLoadOutcome, Never>?
     /// Результат завершеного завантаження; `nil` — ще не завантажено (або завантаження триває).
@@ -71,7 +77,10 @@ final class AppContainer {
         logSink: LogSink = PrintLogSink(),
         retryPolicy: RetryPolicy = RetryPolicy(),
         backgroundTasks: BackgroundTaskRunning? = nil,
-        speech: SpeechSpeaking? = nil
+        speech: SpeechSpeaking? = nil,
+        speechRecognizer: SpeechRecognizing? = nil,
+        audioSession: AudioSessionControlling? = nil,
+        voiceLanguageStore: VoiceLanguageStoring = InMemoryVoiceLanguageStore()
     ) {
         self.paths = paths
         self.settings = settings
@@ -137,6 +146,9 @@ final class AppContainer {
         )
         self.backgroundTasks = backgroundTasks ?? NoopBackgroundTaskRunner()
         self.speech = speech
+        self.speechRecognizer = speechRecognizer
+        self.audioSession = audioSession
+        self.voiceLanguageStore = voiceLanguageStore
     }
 
     /// Контейнер над каталогом даних `baseDirectory` (`dictionary.json` і `Backups/` усередині). Тести Claude
@@ -156,9 +168,9 @@ final class AppContainer {
     }
 
     /// Реальні шляхи (`<контейнер>/Library/Application Support/VocabApp`, DI6), `UserDefaults.standard`, Keychain
-    /// (`service` = bundle id застосунку, DI8), unified logging, фонові задачі (DI18) і озвучення.
-    /// Під XCTest — унікальний тимчасовий каталог, `InMemorySettingsStore`, `InMemorySecretStore`, без фонових задач
-    /// і звуку (hosted-тести ніколи не чіпають справжній словник, `UserDefaults` і Keychain).
+    /// (`service` = bundle id застосунку, DI8), unified logging, фонові задачі (DI18), озвучення, розпізнавання
+    /// мовлення й аудіосесія (I2b). Під XCTest — унікальний тимчасовий каталог, `InMemorySettingsStore`,
+    /// `InMemorySecretStore`, мова голосу в пам'яті, без фонових задач, звуку й мікрофона (hosted-тести ніколи не чіпають справжній словник, `UserDefaults` і Keychain).
     static func makeLive(environment: [String: String]) -> AppContainer {
         if environment[xcTestEnvironmentKey] != nil {
             let directory = FileManager.default.temporaryDirectory
@@ -171,7 +183,10 @@ final class AppContainer {
             secrets: LivePlatform.makeSecretStore(service: LivePlatform.keychainService()),
             logSink: LivePlatform.makeLogSink(category: "claude"),
             backgroundTasks: LivePlatform.makeBackgroundTaskRunner(),
-            speech: LivePlatform.makeSpeech()
+            speech: LivePlatform.makeSpeech(),
+            speechRecognizer: LivePlatform.makeSpeechRecognizer(),
+            audioSession: LivePlatform.makeAudioSessionController(),
+            voiceLanguageStore: UserDefaultsVoiceLanguageStore(defaults: .standard)
         )
     }
 

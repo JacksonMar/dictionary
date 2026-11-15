@@ -1,7 +1,7 @@
 import Foundation
 import VocabCore
 
-/// Платформні реалізації для реального запуску (IOS_PLAN DI4, DI8, DI18). Файли з Security/AVFoundation/os/UIKit
+/// Платформні реалізації для реального запуску (IOS_PLAN DI4, DI8, DI12, DI18). Файли з Security/AVFoundation/os/UIKit
 /// (`KeychainSecretStore`, `SpeechService`, `OSLogSink` — спільні з macOS за шляхом у `project.yml`;
 /// `UIApplicationBackgroundTaskRunner`) підставляються лише тут, тож `AppContainer` і `MobileAppModel` не імпортують
 /// ці фреймворки й тайпчекаються на Linux (там — запасні реалізації з ядра).
@@ -48,6 +48,28 @@ enum LivePlatform {
     static func makeSpeech() -> SpeechSpeaking? {
         #if canImport(AVFoundation)
         return SpeechService()
+        #else
+        return nil
+        #endif
+    }
+
+    /// I2b: `SFSpeechRecognizer` + `AVAudioEngine`; `nil` — недоступне. Умова — та сама, що в
+    /// `Voice/SpeechRecognitionService.swift`.
+    @MainActor
+    static func makeSpeechRecognizer() -> SpeechRecognizing? {
+        #if canImport(Speech) && canImport(AVFoundation) && os(iOS)
+        return SpeechRecognitionService()
+        #else
+        return nil
+        #endif
+    }
+
+    /// I2b: `AVAudioSession` (лише iOS); `nil` — категорією не керуємо. Умова — як у
+    /// `Voice/AudioSessionController.swift`.
+    @MainActor
+    static func makeAudioSessionController() -> AudioSessionControlling? {
+        #if canImport(AVFoundation) && os(iOS)
+        return AudioSessionController()
         #else
         return nil
         #endif
