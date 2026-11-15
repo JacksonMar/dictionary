@@ -1506,3 +1506,14 @@ InterfaceLanguageBootstrap}.swift`, `App/Resources/{en,uk}.lproj/ServicesMenu.st
 - Тести ядра не використовують AppKit/Security; тести застосунку не роблять мережевих запитів і не змінюють
   реальний `~/Library/Application Support/VocabApp` (під тестами — тимчасовий каталог).
 - Нові невизначеності щодо macOS API — у `PROGRESS.md`, розділ «Відкриті питання».
+
+---
+
+## 17. iOS-версія (план, на затвердженні)
+
+План iPhone-застосунку (`VocabMobile`: голосове введення EN | IT, Share Extension з inbox у App Group, App Intents /
+Siri, віджет із мікрофоном, ручна синхронізація `dictionary.json` з Mac) — у `docs/development/IOS_PLAN.md`
+(рішення DI1–DI18, етапи I1–I5, відкриті питання iU1–iU14). Поки план не затверджено, розділи 1–16 описують лише
+macOS. Зміни ядра, які він передбачає (адитивні, з Linux-тестами): `.iOS(.v17)` у `Package.swift`, iOS-сумісний
+fallback у `AppPaths.standard`, тригери `.foreground`/`.inbox`, підказка мови `sourceLanguageHint` (без додаткових
+запитів), модуль `Inbox/`. macOS-таргет і його файли не змінюються.
