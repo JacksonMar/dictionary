@@ -1513,7 +1513,7 @@ InterfaceLanguageBootstrap}.swift`, `App/Resources/{en,uk}.lproj/ServicesMenu.st
 
 План iPhone-застосунку (`VocabMobile`: голосове введення EN | IT, Share Extension з inbox у App Group, App Intents /
 Siri, віджет із мікрофоном, ручна синхронізація `dictionary.json` з Mac) — у `docs/development/IOS_PLAN.md`
-(рішення DI1–DI18, етапи I1–I5, відкриті питання iU1–iU14). Поки план не затверджено, розділи 1–16 описують лише
+(рішення DI1–DI19, етапи I0 (спайк підпису), I1a, I1b, I2a (ядро), I2b, I3–I5, відкриті питання iU1–iU15). Поки план не затверджено, розділи 1–16 описують лише
 macOS. Зміни ядра, які він передбачає (адитивні, з Linux-тестами): `.iOS(.v17)` у `Package.swift`, iOS-сумісний
-fallback у `AppPaths.standard`, тригери `.foreground`/`.inbox`, підказка мови `sourceLanguageHint` (без додаткових
-запитів), модуль `Inbox/`. macOS-таргет і його файли не змінюються.
+fallback у `AppPaths.standard`, тригери `.foreground`/`.inbox`, підказка мови (опційне поле `Entry.languageHint`, без
+додаткових запитів; Mac його не показує), модуль `Inbox/`. macOS-таргет і його файли не змінюються.
