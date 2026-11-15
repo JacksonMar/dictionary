@@ -205,7 +205,8 @@ final class VoiceCaptureModelTests: XCTestCase {
         XCTAssertEqual(harness.scheduler.now, 10, accuracy: 0.0001)
         XCTAssertEqual(harness.recognizer.stopCount, 1)
         XCTAssertEqual(model.editableText, "word10")
-        XCTAssertTrue(harness.scheduler.pendingTimers.isEmpty)
+        XCTAssertEqual(harness.scheduler.pendingTimers.map(\.delay), [VoiceCaptureModel.defaultFinalizeTimeout],
+                       "only the finalize timeout stays armed")
 
         // Nothing fires later.
         harness.scheduler.advance(by: 30)
@@ -232,7 +233,8 @@ final class VoiceCaptureModelTests: XCTestCase {
         XCTAssertEqual(model.editableText, "perch")
         XCTAssertTrue(model.isFinalizing)
         XCTAssertEqual(harness.audio.events, [.recording, .deactivate])
-        XCTAssertTrue(harness.scheduler.pendingTimers.isEmpty, "tap cancels the silence and max timers")
+        XCTAssertEqual(harness.scheduler.pendingTimers.map(\.delay), [VoiceCaptureModel.defaultFinalizeTimeout],
+                       "tap cancels the silence and max timers; only the finalize timeout is armed")
 
         harness.recognizer.emit(.final(RecognitionTranscript(text: "perché")))
         await waitUntil { model.editableText == "perché" }
@@ -651,4 +653,105 @@ final class VoiceCaptureModelTests: XCTestCase {
         await unknown.model.launch(languageID: "fr")
         XCTAssertEqual(unknown.recognizer.startCalls.last?.locale, "it-IT")
     }
+
+    // MARK: - Audio session release and finalize timeout (I2b review fixes)
+
+    /// Recognize `run`, submit, and land on the result card.
+    @MainActor
+    private func reachResult(_ harness: Harness, file: StaticString = #filePath, line: UInt = #line) async {
+        await startListening(harness, file: file, line: line)
+        harness.recognizer.emit(.final(RecognitionTranscript(text: "run")))
+        await waitUntil(file: file, line: line) { harness.model.phase == .recognized }
+        await harness.model.submit()
+        XCTAssertNotNil(harness.model.result, file: file, line: line)
+    }
+
+    @MainActor
+    func testSpeakResultDeactivatesAfterSpeechFinishes() async {
+        let audio = FakeAudioSession()
+        let speech = FakeCompletingSpeech()
+        let recognizer = FakeSpeechRecognizer()
+        let model = VoiceCaptureModel(
+            recognizer: recognizer,
+            submitter: FakeVoiceSubmitter(),
+            languageStore: InMemoryVoiceLanguageStore(),
+            scheduler: ManualVoiceScheduler(),
+            speech: speech,
+            audioSession: audio
+        )
+        await model.toggleListening()
+        recognizer.emit(.final(RecognitionTranscript(text: "run")))
+        await waitUntil { model.phase == .recognized }
+        await model.submit()
+        XCTAssertNotNil(model.result)
+
+        model.speakResult()
+        XCTAssertEqual(audio.events.last, .playback)
+        XCTAssertTrue(model.isAudioSessionActive, "session stays active while speaking")
+        XCTAssertEqual(speech.spoken, ["run"])
+
+        speech.finishAll()
+        XCTAssertEqual(audio.events.last, .deactivate, "playback session released after speech (others un-duck)")
+        XCTAssertFalse(model.isAudioSessionActive)
+
+        // A completion of an interrupted (older) utterance does not release the session of the newer one.
+        model.speakResult()
+        model.speakResult()
+        let eventsBefore = audio.events
+        model.speechDidFinish(generation: 0)  // stale generation (every speak bumps it to ≥ 1)
+        XCTAssertEqual(audio.events, eventsBefore)
+        speech.finishAll()
+        XCTAssertEqual(audio.events.last, .deactivate)
+        XCTAssertEqual(audio.events.filter { $0 == .deactivate }.count, 3, "recording stop + one per finished playback")
+    }
+
+    @MainActor
+    func testDismissAfterSpeakDeactivatesAudio() async {
+        // Plain `SpeechSpeaking` (no completion): dismissal must still release the playback session.
+        let harness = makeHarness()
+        await reachResult(harness)
+        harness.model.speakResult()
+        XCTAssertEqual(harness.audio.events.last, .playback)
+        XCTAssertTrue(harness.model.isAudioSessionActive)
+
+        harness.model.cancel()
+        XCTAssertEqual(harness.audio.events.last, .deactivate)
+        XCTAssertFalse(harness.model.isAudioSessionActive)
+        XCTAssertEqual(harness.model.phase, .idle)
+
+        // Nothing active → a second dismissal does not touch the session again.
+        let count = harness.audio.events.count
+        harness.model.cancel()
+        XCTAssertEqual(harness.audio.events.count, count)
+    }
+
+    @MainActor
+    func testFinalizingTimesOutWithoutFinal() async {
+        let harness = makeHarness()
+        await startListening(harness)
+        harness.recognizer.emit(.partial(RecognitionTranscript(text: "cas")))
+        await waitUntil { harness.model.partialText == "cas" }
+
+        await harness.model.toggleListening()  // tap stop: endAudio, recognizer never answers
+        XCTAssertEqual(harness.model.phase, .recognized)
+        XCTAssertTrue(harness.model.isFinalizing)
+        XCTAssertEqual(harness.model.editableText, "cas")
+        let cancelsBefore = harness.recognizer.cancelCount
+
+        harness.scheduler.advance(by: VoiceCaptureModel.defaultFinalizeTimeout - 0.1)
+        XCTAssertTrue(harness.model.isFinalizing, "still waiting just before the timeout")
+
+        harness.scheduler.advance(by: 0.2)
+        XCTAssertFalse(harness.model.isFinalizing, "finalize timeout clears the spinner")
+        XCTAssertEqual(harness.recognizer.cancelCount, cancelsBefore + 1, "recognition task cancelled")
+        XCTAssertEqual(harness.model.editableText, "cas", "partial text kept")
+        XCTAssertEqual(harness.model.phase, .recognized)
+        XCTAssertTrue(harness.model.canSubmit)
+
+        // A very late final from the abandoned session is ignored.
+        harness.recognizer.emit(.final(RecognitionTranscript(text: "casa")), toSession: 0)
+        await settleMainActor()
+        XCTAssertEqual(harness.model.editableText, "cas")
+    }
 }
+

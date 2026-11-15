@@ -155,6 +155,8 @@ final class VoiceCaptureModel: ObservableObject {
 
     nonisolated static let defaultSilenceTimeout: TimeInterval = 1.5
     nonisolated static let defaultMaxDuration: TimeInterval = 10
+    /// Скільки чекати остаточного тексту після зупинки (`endAudio()`), якщо розпізнавач мовчить.
+    nonisolated static let defaultFinalizeTimeout: TimeInterval = 3
 
     @Published private(set) var phase: Phase = .idle
     /// Живий частковий текст під час слухання.
@@ -183,6 +185,7 @@ final class VoiceCaptureModel: ObservableObject {
     private let audioSession: AudioSessionControlling?
     let silenceTimeout: TimeInterval
     let maxDuration: TimeInterval
+    let finalizeTimeout: TimeInterval
 
     /// Номер поточного сеансу: події старих сеансів (після «Ще раз»/скасування) ігноруються.
     private(set) var sessionID = 0
@@ -190,6 +193,11 @@ final class VoiceCaptureModel: ObservableObject {
     private(set) var recognitionTask: Task<Void, Never>?
     private var silenceTimer: VoiceTimer?
     private var maxDurationTimer: VoiceTimer?
+    private var finalizeTimer: VoiceTimer?
+    /// Аудіосесію активовано (запис або відтворення) і ще не вимкнено — `cancel()`/закриття аркуша її вимикає.
+    private(set) var isAudioSessionActive = false
+    /// Номер останнього озвучення: завершення старого (перерваного) озвучення сесію не вимикає.
+    private var speakGeneration = 0
     /// Текст, яким модель востаннє заповнила `editableText` (щоб не перезаписати правки користувача).
     private var autoFilledText = ""
 
@@ -201,7 +209,8 @@ final class VoiceCaptureModel: ObservableObject {
         speech: SpeechSpeaking? = nil,
         audioSession: AudioSessionControlling? = nil,
         silenceTimeout: TimeInterval = VoiceCaptureModel.defaultSilenceTimeout,
-        maxDuration: TimeInterval = VoiceCaptureModel.defaultMaxDuration
+        maxDuration: TimeInterval = VoiceCaptureModel.defaultMaxDuration,
+        finalizeTimeout: TimeInterval = VoiceCaptureModel.defaultFinalizeTimeout
     ) {
         self.recognizer = recognizer
         self.submitter = submitter
@@ -211,6 +220,7 @@ final class VoiceCaptureModel: ObservableObject {
         self.audioSession = audioSession
         self.silenceTimeout = silenceTimeout
         self.maxDuration = maxDuration
+        self.finalizeTimeout = finalizeTimeout
         self.language = languageStore.voiceLanguage
     }
 
@@ -341,6 +351,7 @@ final class VoiceCaptureModel: ObservableObject {
     func startListening() async {
         guard !isBusy else { return }
         endRecognitionSession(cancelRecognizer: true)
+        speakGeneration += 1
         speech?.stop()
         submitError = nil
         guard let recognizer else {
@@ -377,8 +388,10 @@ final class VoiceCaptureModel: ObservableObject {
 
         if let audioSession {
             do {
+                isAudioSessionActive = true
                 try audioSession.activateForRecording()
             } catch {
+                deactivateAudioSession()
                 enterError(.audio)
                 return
             }
@@ -420,12 +433,28 @@ final class VoiceCaptureModel: ObservableObject {
         level = 0
         isFinalizing = recognitionTask != nil
         enterRecognized(partialText)
+        if isFinalizing {
+            let session = sessionID
+            finalizeTimer = scheduler.schedule(after: finalizeTimeout) { [weak self] in
+                self?.finalizeTimedOut(session: session)
+            }
+        }
+    }
+
+    /// Розпізнавач не надіслав остаточний текст за `finalizeTimeout`: лишаємо вже розпізнане, сеанс скасовуємо.
+    private func finalizeTimedOut(session: Int) {
+        guard session == sessionID, isFinalizing else { return }
+        finalizeTimer = nil
+        endRecognitionSession(cancelRecognizer: true)
     }
 
     /// «Скасувати» / закриття аркуша: зупиняє розпізнавач і мікрофон, повертає `idle`. Результат не надсилається.
     func cancel() {
         endRecognitionSession(cancelRecognizer: true)
+        speakGeneration += 1
         speech?.stop()
+        // І після запису, і після «Озвучити» (`.playback`): інші застосунки відновлюють звук.
+        deactivateAudioSession()
         if phase != .submitting {
             resetToIdle()
         }
@@ -458,14 +487,36 @@ final class VoiceCaptureModel: ObservableObject {
     /// «Озвучити» на картці: аудіосесія → відтворення (після запису вона була `.record`, iU14), далі `SpeechSpeaking`.
     func speakResult() {
         guard let result, let text = result.speakText, let speech else { return }
+        speakGeneration += 1
+        let generation = speakGeneration
         if let audioSession {
+            isAudioSessionActive = true
             do {
                 try audioSession.activateForPlayback()
             } catch {
                 // Без перемикання категорії озвучення може бути тихим, але спробувати варто (не блокуємо).
             }
         }
-        speech.speak(text, languageCode: result.speakLanguageCode)
+        if let reporting = speech as? SpeechCompletionReporting {
+            reporting.speak(text, languageCode: result.speakLanguageCode) { [weak self] in
+                self?.speechDidFinish(generation: generation)
+            }
+        } else {
+            // Озвучення без сповіщення про завершення: сесію вимкне `cancel()` (закриття аркуша).
+            speech.speak(text, languageCode: result.speakLanguageCode)
+        }
+    }
+
+    /// Озвучення `generation` завершилось або перервалось: вимикаємо сесію, якщо після нього не почалось нове
+    /// озвучення чи запис (внутрішнє API; викликає `SpeechCompletionReporting`).
+    func speechDidFinish(generation: Int) {
+        guard generation == speakGeneration else { return }
+        switch phase {
+        case .requestingPermission, .listening:
+            return
+        case .idle, .recognized, .submitting, .result, .error:
+            deactivateAudioSession()
+        }
     }
 
     // MARK: - Події розпізнавача
@@ -499,6 +550,8 @@ final class VoiceCaptureModel: ObservableObject {
                 applyLateText(transcript)
             }
             isFinalizing = false
+            finalizeTimer?.cancel()
+            finalizeTimer = nil
         case .failed(let error):
             handleFailure(error)
         }
@@ -507,6 +560,8 @@ final class VoiceCaptureModel: ObservableObject {
     private func handleFailure(_ error: RecognitionError) {
         let wasListening = phase == .listening
         isFinalizing = false
+        finalizeTimer?.cancel()
+        finalizeTimer = nil
         guard wasListening else {
             // Після зупинки поле вже показує розпізнане: помилку (часто «скасовано») не показуємо.
             return
@@ -532,6 +587,8 @@ final class VoiceCaptureModel: ObservableObject {
         guard session == sessionID else { return }
         recognitionTask = nil
         isFinalizing = false
+        finalizeTimer?.cancel()
+        finalizeTimer = nil
         if phase == .listening {
             // Потік закінчився без `.final` (напр. система перервала сеанс) — віддаємо те, що є.
             cancelTimers()
@@ -572,6 +629,8 @@ final class VoiceCaptureModel: ObservableObject {
     private func cancelTimers() {
         silenceTimer?.cancel()
         silenceTimer = nil
+        finalizeTimer?.cancel()
+        finalizeTimer = nil
         maxDurationTimer?.cancel()
         maxDurationTimer = nil
     }
@@ -617,8 +676,10 @@ final class VoiceCaptureModel: ObservableObject {
         level = 0
     }
 
+    /// Вимикає сесію, лише якщо модель її вмикала (повторні виклики нічого не роблять).
     private func deactivateAudioSession() {
-        guard let audioSession else { return }
+        guard let audioSession, isAudioSessionActive else { return }
+        isAudioSessionActive = false
         do {
             try audioSession.deactivate()
         } catch {

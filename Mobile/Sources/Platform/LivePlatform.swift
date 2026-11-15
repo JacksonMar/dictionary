@@ -46,7 +46,10 @@ enum LivePlatform {
     /// Озвучення (`AVSpeechSynthesizer`); `nil` — недоступне.
     @MainActor
     static func makeSpeech() -> SpeechSpeaking? {
-        #if canImport(AVFoundation)
+        #if canImport(AVFoundation) && os(iOS)
+        // I2b: те саме озвучення + сповіщення про завершення (голос вимикає аудіосесію після «Озвучити»).
+        return VoiceSpeechService()
+        #elseif canImport(AVFoundation)
         return SpeechService()
         #else
         return nil

@@ -97,6 +97,16 @@ protocol VoiceWordSubmitting: AnyObject {
     func submitVoiceWord(_ rawText: String, languageHint: String) async -> AddWordOutcome
 }
 
+/// Озвучення, що повідомляє про завершення (iOS): після «Озвучити» на картці модель вимикає аудіосесію `.playback`,
+/// щоб інші застосунки відновили звук. Спільний з macOS `SpeechSpeaking` не змінюється; живий —
+/// `VoiceSpeechService` (лише iOS).
+@MainActor
+protocol SpeechCompletionReporting: SpeechSpeaking {
+    /// `completion` викликається рівно один раз на головному акторі, коли це висловлювання закінчилось або
+    /// перервалось (`stop()`, нове `speak`, порожній текст — одразу).
+    func speak(_ text: String, languageCode: String, completion: @escaping @MainActor @Sendable () -> Void)
+}
+
 /// Категорія аудіосесії (IOS_PLAN §2): запис (`.record`/`.measurement`) ↔ відтворення (`.playback`) для озвучення
 /// одразу після запису (iU14). Живий — `AudioSessionController` (AVFoundation, лише iOS).
 @MainActor

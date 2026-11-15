@@ -265,3 +265,35 @@ func settleMainActor() async {
         await Task.yield()
     }
 }
+
+/// `SpeechCompletionReporting` fake: keeps each utterance's completion until the test calls `finishAll()`.
+@MainActor
+final class FakeCompletingSpeech: SpeechCompletionReporting {
+    private(set) var spoken: [String] = []
+    private(set) var stopCount = 0
+    private var completions: [@MainActor @Sendable () -> Void] = []
+
+    func speak(_ text: String, languageCode: String) {
+        spoken.append(text)
+    }
+
+    func speak(_ text: String, languageCode: String, completion: @escaping @MainActor @Sendable () -> Void) {
+        spoken.append(text)
+        completions.append(completion)
+    }
+
+    func stop() {
+        stopCount += 1
+    }
+
+    var pendingCount: Int {
+        completions.count
+    }
+
+    /// Simulates `didFinish` for every utterance spoken so far.
+    func finishAll() {
+        let pending = completions
+        completions = []
+        pending.forEach { $0() }
+    }
+}
