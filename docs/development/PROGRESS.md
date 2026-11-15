@@ -17,7 +17,8 @@
 | iOS-план (`IOS_PLAN.md`) | approved | 2 | PASS (ітерація 2) + затвердження користувача |
 | I0 — Спайк підпису й можливостей | done (⏳ Mac) | 2 | PASS умовний (ітерація 2) — Linux 552 тести; iOS-збірка й пристрій — користувач (відкладено) |
 | I1a — Ядро на iOS + каркас + список | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 21 мобільний тест у харнесі; iOS-збірка — Mac |
-| I1b — CRUD, Claude, Settings/Keychain | in progress | – | – |
+| I1b — CRUD, Claude, Settings/Keychain | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 41 мобільний тест; iOS-збірка й Keychain — Mac |
+| I2a — Підказка мови в ядрі | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -138,6 +139,15 @@ _(вердикти Judge — нижче по етапах)_
 - Прийняті відхилення: `VocabMobileTests` без прямого лінкування VocabCore (як macOS `VocabAppTests`; запасний план у `project.yml`); `EntryRowContent` у `MobileAppModel.swift`.
 - Перенесено в I1b: `loadOutcome` присвоювати всередині `Task` (усі викликачі бачать `isLoaded` одразу після `await`) + тест; винести `EntryRowContent` в окремий файл; `hasNoSearchResults` прибрати або задіяти.
 - ⏳ Mac: `manual-tests/I1a.md` (разом з I0.md).
+
+#### I1b — ітерація 1: PASS (умовний)
+- Додавання (Claude / вручну D14), редагування (варіанти зберігаються), видалення, «Повторити», `.refreshable` → retryAll, доповнення IT лише в режимі IT + «Оновити італійський» (1 запит), Settings (ключ у Keychain з service = bundle id iOS-застосунку, модель, мова інтерфейсу миттєво через `.id`), озвучення.
+- Tester знайшов гонку `MobileAppModel.start()` (миготіння порожнього стану на старті) → виправлено single-flight до рев'ю Judge.
+- Linux: ядро 552; мобільний харнес 41/0 (на iOS очікується 44: + AppLaunch, 2 Keychain).
+- Свідомі відхилення від плану на iOS: немає 60-с таймера pending і `NetworkMonitor` (pending добирають `.foreground` і pull-to-refresh), немає кнопки «Fill Italian (N)» (автодоповнення в режимі IT + дія на записі), OSLog subsystem спільний з macOS (`com.vocabapp.VocabApp`), `AppRoute.settings`, `RenderingLanguageTexts.swift` спільний за шляхом, `APIKeyCache`/`EntryForm` — копії (DI5).
+- Після помилки завантаження повтор лише перезапуском застосунку (як macOS, §4).
+- Після рев'ю: `.foreground` поважає backoff (зауваження Judge щодо токенів), прибрано невикористаний ключ L10n.
+- ⏳ Mac: `manual-tests/I1b.md`.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
