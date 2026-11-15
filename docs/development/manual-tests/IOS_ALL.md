@@ -42,9 +42,9 @@ iOS-збірка відбудеться після I5. Цей файл — **о�
 
 | Набір | Очікування |
 |---|---|
-| Linux (довідково, вже перевірено) | ядро `swift test` — **596**, 0 падінь; мобільний харнес — 106 + нові тести I5 |
+| Linux (довідково, вже перевірено) | ядро `swift test` — **596**, 0 падінь; мобільний харнес — **124** (106 + 18 `MobileTransferTests`), 0 падінь |
 | macOS `-scheme VocabApp` | `** TEST SUCCEEDED **`, 0 падінь; кількість — як до iOS-етапів (macOS-файли не змінювались; ядро — лише адитивно) |
-| iOS `-scheme VocabMobile` | `** TEST SUCCEEDED **`, 0 падінь; **111 (до I5) + тести I5** (`MobileTransferTests`, план — 6: `testExportRoundTripsThroughCoreImporter`, `testExportFileNameAndContentType`, `testImportCopiesSecurityScopedFileBeforeReading`, `testMergeReportShown`, `testReplaceMakesBackup`, `testImportedPendingProcessedOnce`) ≈ **117**; точне число фіксує Tester у `PROGRESS.md`. Лише на iOS (не в Linux-харнесі): hosted `AppLaunchTests`, Keychain-тести, `InfoPlistMobileTests` з бандла |
+| iOS `-scheme VocabMobile` | `** TEST SUCCEEDED **`, 0 падінь; **129** = 111 (до I5) + 18 `MobileTransferTests` (план — 6: `testExportRoundTripsThroughCoreImporter`, `testExportFileNameAndContentType`, `testImportCopiesSecurityScopedFileBeforeReading`, `testMergeReportShown`, `testReplaceMakesBackup`, `testImportedPendingProcessedOnce`; додатково 12: скасування, помилки файлу, блокування паралельного перенесення, звіт UK/обрізання причин, ready → 0 запитів, недоступність до завантаження). Лише на iOS (не в Linux-харнесі): hosted `AppLaunchTests`, Keychain-тести, `InfoPlistMobileTests` з бандла |
 
 ## 3. Відомий запасний план: `Undefined symbols` у `VocabMobileTests`
 
