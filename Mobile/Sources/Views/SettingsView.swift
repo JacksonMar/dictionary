@@ -3,7 +3,8 @@ import VocabCore
 
 /// Налаштування (IOS_PLAN §5, `Form`): API-ключ (`SecureField`, зберегти/видалити, статус; лише Keychain, DI8),
 /// модель (+ скидання), мова голосу за замовчуванням (I2b, `voiceLanguage`), мова інтерфейсу (миттєво, DI14), дані
-/// (шлях і кількість резервних копій). Теми немає (DI19); експорт/імпорт — I5.
+/// (шлях і кількість резервних копій), синхронізація з Mac (I5: експорт `fileExporter` у Files — AirDrop звідти через
+/// «Поділитися»; імпорт `fileImporter` → «Об'єднати»/«Замінити», `ImportModeDialog`). Теми немає (DI19).
 @MainActor
 struct SettingsView: View {
     @ObservedObject var model: MobileAppModel
@@ -19,7 +20,17 @@ struct SettingsView: View {
                 modelSection
                 voiceSection
                 languageSection
+                transferSection
                 dataSection
+            }
+            // `fileExporter` і `fileImporter` — на різних view (на одному view кілька файлових панелей конфліктують).
+            .fileExporter(
+                isPresented: $model.isExporterPresented,
+                document: model.preparedExport.map { (prepared: PreparedExport) in DictionaryJSONDocument(prepared) },
+                contentType: DictionaryFileFormat.contentType,
+                defaultFilename: model.preparedExport?.fileName ?? MobileAppModel.exportFileName
+            ) { (result: Result<URL, Error>) in
+                model.finishExport(result)
             }
             .navigationTitle(L10n.text(.windowSettings))
             .navigationBarTitleDisplayMode(.inline)
@@ -37,6 +48,13 @@ struct SettingsView: View {
                 modelInput = model.modelName
             }
         }
+        .fileImporter(
+            isPresented: $model.isImporterPresented,
+            allowedContentTypes: [DictionaryFileFormat.contentType]
+        ) { (result: Result<URL, Error>) in
+            model.handleImportSelection(result)
+        }
+        .importModeDialog(model: model)
     }
 
     // MARK: - Sections
@@ -121,6 +139,32 @@ struct SettingsView: View {
             Text(L10n.text(.mobileSettingsSectionLanguage))
         } footer: {
             Text(L10n.text(.mobileSettingsLanguageHint))
+        }
+    }
+
+    private var transferSection: some View {
+        Section {
+            Button {
+                Task { @MainActor in
+                    await model.prepareExport()
+                }
+            } label: {
+                Label(L10n.text(.mobileTransferExport), systemImage: "square.and.arrow.up")
+            }
+            .disabled(!model.canTransfer)
+            Button {
+                model.beginImport()
+            } label: {
+                Label(L10n.text(.mobileTransferImport), systemImage: "square.and.arrow.down")
+            }
+            .disabled(!model.canTransfer)
+            if model.isTransferring {
+                ProgressView()
+            }
+        } header: {
+            Text(L10n.text(.mobileTransferSection))
+        } footer: {
+            Text(L10n.text(.mobileTransferAirDropHint) + "\n" + L10n.text(.mobileTransferHint))
         }
     }
 

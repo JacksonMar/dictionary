@@ -319,4 +319,10 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case intentAddTranslating = "intent.add.translating"
     case intentAddLoadFailed = "intent.add.loadFailed"
     case intentAddEmpty = "intent.add.empty"
+    // iOS: експорт/імпорт (I5).
+    case mobileTransferSection = "mobile.transfer.section"
+    case mobileTransferExport = "mobile.transfer.export"
+    case mobileTransferImport = "mobile.transfer.import"
+    case mobileTransferAirDropHint = "mobile.transfer.airDropHint"
+    case mobileTransferHint = "mobile.transfer.hint"
 }

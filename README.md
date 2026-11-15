@@ -6,7 +6,7 @@
 
 # VocabApp
 
-A macOS menu bar app that builds your personal English–Ukrainian (and Italian) vocabulary from any app in two clicks.
+A macOS menu bar app (with an [iPhone companion](#iphone)) that builds your personal English–Ukrainian (and Italian) vocabulary from any app in two clicks.
 
 ## Overview
 
@@ -151,6 +151,95 @@ System Settings → General → Login Items.
 Logs (the API key is never logged):
 `log show --last 30m --predicate 'subsystem == "com.vocabapp.VocabApp"' --info`
 
+## iPhone
+
+VocabApp also has an iPhone app (iOS 17+) that works with the same dictionary format. It is installed from Xcode on
+your Mac — there is no App Store build. A free Apple ID is enough.
+
+### Requirements
+
+| Requirement | Notes |
+|-------------|-------|
+| Mac with Xcode 16 or later | The full Xcode app, plus [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). |
+| iPhone with iOS 17 or later | A USB cable for the first install. |
+| Apple ID | A free Apple ID (Personal Team) works; a paid developer account is optional. |
+| Anthropic API key | The same kind of key as on the Mac; it is entered on the iPhone separately. |
+
+### Signing setup (once)
+
+Your Team ID and bundle prefix live only in `Config/Local.xcconfig`, which is in `.gitignore` — **never commit it**.
+
+1. `cp Config/Local.example.xcconfig Config/Local.xcconfig`
+2. Find your Team ID: Xcode → Settings → Accounts → add your Apple ID (a “Personal Team” appears). Open
+   `VocabApp.xcodeproj` → target **VocabMobile** → Signing & Capabilities → choose the team, then Build Settings →
+   `DEVELOPMENT_TEAM` and copy the 10-character value.
+3. In `Config/Local.xcconfig` set `VOCAB_DEVELOPMENT_TEAM` to that value and `VOCAB_BUNDLE_ID_PREFIX` to a unique
+   prefix of your own, e.g. `com.<your-nickname>.vocab` (bundle IDs are global; a free account can register only a
+   few new App IDs per week, so do not change the prefix without a reason).
+4. `xcodegen generate`
+
+The comments in `Config/Local.example.xcconfig` describe the same steps.
+
+### Install
+
+1. On the iPhone: Settings → Privacy & Security → **Developer Mode** → on (the iPhone restarts).
+2. Connect the iPhone, open `VocabApp.xcodeproj`, choose the **VocabMobile** scheme and your iPhone, press **Run**.
+3. The first time: on the iPhone open Settings → General → VPN & Device Management → your developer certificate →
+   **Trust**, then start VocabApp.
+4. In VocabApp → ⚙︎ Settings enter your Anthropic API key.
+
+**Every 7 days** (free Apple ID) the app stops launching until it is signed again: connect the iPhone and press **Run**
+in Xcode again. Your dictionary is kept as long as you do not delete the app. Before deleting or reinstalling, export
+the dictionary first (see below).
+
+### Features on the iPhone
+
+| Feature | How |
+|---------|-----|
+| Dictionary | List with search, sorting, **EN \| IT** switch, details, editing, text-to-speech; pull down to retry pending words. |
+| Voice input | Microphone button → speak an English or Italian word (**EN \| IT** switch); the recognized word is always shown for confirmation — nothing is added until you tap **Add**. |
+| Share | Select a word in Safari, Mail, Notes… → **Share** → **VocabApp**; the word is added the next time you open the app. |
+| Siri and Shortcuts | “Add a word to VocabApp”, “Add a word by voice to VocabApp” (Siri phrases are English only); both actions are also in the Shortcuts app and can be put on the Action Button. |
+| Widget | “Add by Voice” on the Home Screen or Lock Screen opens voice input and starts listening. |
+
+Token use is the same as on the Mac: one request per new word, none for a duplicate.
+
+### Sync with the Mac
+
+There is no automatic sync — you move the file manually (`dictionary.json`, the same format on both devices).
+
+- **Mac → iPhone:** on the Mac, Settings → **Export…**; send the file via AirDrop (it goes to Files → Downloads) or
+  put it in iCloud Drive. On the iPhone: ⚙︎ Settings → **Sync with Mac** → **Import from Files…** → choose the file →
+  **Merge** or **Replace…**.
+- **iPhone → Mac:** ⚙︎ Settings → **Export to Files…** saves the file in Files. To send it via **AirDrop**, save it to
+  Files first, then open it in Files and tap **Share** → AirDrop. On the Mac: Settings → **Import…**.
+
+| Mode | Behavior |
+|------|----------|
+| **Merge** (default) | New entries are added; if a word exists on both devices, the more recently changed entry wins. Italian versions are combined. |
+| **Replace…** | After confirmation the dictionary is replaced by the file; the current one is first saved to Backups. |
+
+**Deletions are not synced:** a word deleted on one device comes back after a Merge from the other. To remove words
+everywhere, delete them on one device and use **Replace…** on the other. Pending words in an imported file are
+translated after the import (one request per word). An invalid file never changes the dictionary.
+
+### API key and data on the iPhone
+
+The API key is stored only in the iPhone Keychain of VocabApp — it is not exported and not shared with the Mac; enter
+it on each device. The dictionary and backups are in the app container (`Library/Application Support/VocabApp`; the
+exact path is shown in ⚙︎ Settings) and are deleted together with the app.
+
+### iPhone troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Xcode: “No profiles…” / signing errors | Check `VOCAB_DEVELOPMENT_TEAM` and that the prefix is unique, run `xcodegen generate` again. The team chosen in Xcode is lost on regeneration — keep it in `Config/Local.xcconfig`. |
+| “Untrusted Developer” on launch | Settings → General → VPN & Device Management → trust the certificate. |
+| The app stopped opening after a week | The free profile expired: connect the iPhone and press **Run** in Xcode (data is kept). |
+| VocabApp is missing in the Share sheet, or Share says the shared folder is not available | The App Group is not available for your signing team. Use the Shortcuts fallback: create a shortcut “Receive text from Share Sheet → Add to Dictionary (VocabApp)” and share to that shortcut instead. |
+| Voice: the Italian word is recognized poorly | Correct it in the text field before tapping **Add**; without a network Italian may be unavailable if on-device recognition is not installed. |
+| Siri does not understand | Siri phrases work in English; use the Shortcuts app for other languages. |
+
 ## Development
 
 ```
@@ -160,6 +249,9 @@ Sources/VocabCore/     Core: model, storage, Claude API client, queue, import/ex
 Tests/VocabCoreTests/  Core tests
 App/                   macOS app: SwiftUI/AppKit UI, Services provider, Keychain, notifications
 App/Tests/             App tests (macOS only)
+Mobile/                iPhone app (SwiftUI, iOS 17): voice input, App Intents, transfer; Mobile/Tests — iOS tests
+Extensions/            iPhone Share extension and widget
+Config/                Signing settings (Local.example.xcconfig → your gitignored Local.xcconfig)
 docs/development/      Architecture, requirements, progress and manual test checklists
 ```
 
@@ -171,6 +263,10 @@ docker run --rm -v "$PWD":/w -w /w swift:6.0-noble swift test
 # App tests (macOS)
 xcodegen generate && xcodebuild test -project VocabApp.xcodeproj -scheme VocabApp \
   -destination 'platform=macOS' -derivedDataPath build CODE_SIGN_IDENTITY=-
+
+# iPhone app tests (simulator)
+xcodebuild test -project VocabApp.xcodeproj -scheme VocabMobile \
+  -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
 Tests make no network requests and never touch your real dictionary. Contributor documentation lives in

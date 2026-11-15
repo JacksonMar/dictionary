@@ -15,7 +15,8 @@ enum DictionaryLoadOutcome: Equatable, Sendable {
 /// Композиційний корінь iOS-застосунку (IOS_PLAN §2, §4): одне сховище, один `DictionaryRepository` (actor) на
 /// процес, налаштування, реєстр мовних пар, API-ключ (`SecretStore`), Claude (`ClaudeLookupService`), черга
 /// (`EntryProcessor` → `PendingQueueProcessor`), `AddWordUseCase`, доповнення варіантів (`VariantBackfillProcessor`),
-/// фонові задачі, озвучення, inbox «Поділитися» (`InboxStore` → `InboxIngestor`, I3), `Router` процесу (I4). Композиція — як macOS `ClaudeServices.make` (`App/Sources/AppModel.swift`).
+/// фонові задачі, озвучення, inbox «Поділитися» (`InboxStore` → `InboxIngestor`, I3), `Router` процесу (I4),
+/// експорт/імпорт (`DictionaryTransferService` + `ImportFileStager`, I5). Композиція — як macOS `ClaudeServices.make` (`App/Sources/AppModel.swift`).
 ///
 /// Завантаження — single-flight: перший `ensureLoaded()` створює й кешує `Task` з `repository.load()`; наступні
 /// виклики (UI, intent-и, повторний `.active`) чекають на той самий `Task`. Помилка кешується (як на macOS):
@@ -65,6 +66,11 @@ final class AppContainer {
     /// I4: маршрут UI процесу — один на процес, щоб `StartVoiceCaptureIntent` (виконується в процесі застосунку) і
     /// глибокі посилання відкривали той самий аркуш, що бачить `VocabMobileApp`.
     let router: Router
+    /// I5: експорт/імпорт словника (`DictionaryTransferService` ядра, ARCHITECTURE §10): merge/replace, бекап перед
+    /// заміною (`BackupReason.replaceImport`), D1-конфлікти.
+    let transfer: DictionaryTransferService
+    /// I5: копіювання вибраного у Files файлу (security-scoped) у тимчасовий каталог перед імпортом.
+    let importStager: ImportFileStager
 
     private var loadTask: Task<DictionaryLoadOutcome, Never>?
     /// Результат завершеного завантаження; `nil` — ще не завантажено (або завантаження триває).
@@ -88,22 +94,25 @@ final class AppContainer {
         speechRecognizer: SpeechRecognizing? = nil,
         audioSession: AudioSessionControlling? = nil,
         voiceLanguageStore: VoiceLanguageStoring = InMemoryVoiceLanguageStore(),
-        inboxDirectory: URL? = nil
+        inboxDirectory: URL? = nil,
+        securityScopedAccess: SecurityScopedAccessing = URLSecurityScopedAccess(),
+        importStagingDirectory: URL? = nil
     ) {
         self.paths = paths
         self.settings = settings
         self.registry = registry
         self.dateProvider = dateProvider
         self.fileSystem = fileSystem
+        // Ті самі `Backups/`, що й для зіпсованого файлу (D12): бекап перед «Замінити» (I5) лягає поруч.
+        let backups = BackupManager(
+            directory: paths.backupsDirectory,
+            fileSystem: fileSystem,
+            dateProvider: dateProvider
+        )
         let resolvedStore: DictionaryStoring
         if let store {
             resolvedStore = store
         } else {
-            let backups = BackupManager(
-                directory: paths.backupsDirectory,
-                fileSystem: fileSystem,
-                dateProvider: dateProvider
-            )
             resolvedStore = FileDictionaryStore(
                 fileURL: paths.dictionaryURL,
                 fileSystem: fileSystem,
@@ -113,6 +122,18 @@ final class AppContainer {
         }
         let repository = DictionaryRepository(store: resolvedStore, dateProvider: dateProvider)
         self.repository = repository
+        self.transfer = DictionaryTransferService(
+            repository: repository,
+            store: resolvedStore,
+            backups: backups,
+            fileSystem: fileSystem,
+            dateProvider: dateProvider
+        )
+        self.importStager = ImportFileStager(
+            access: securityScopedAccess,
+            fileSystem: fileSystem,
+            directory: importStagingDirectory ?? ImportFileStager.defaultDirectory()
+        )
 
         // Claude і черга — як macOS `ClaudeServices.make`.
         let keyCache = APIKeyCache()

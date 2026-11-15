@@ -11,6 +11,30 @@ enum EntryLeadingAction: Equatable {
     case refreshVariant(languageID: String)
 }
 
+/// Повідомлення про результат експорту/імпорту (алерт у Налаштуваннях) — як macOS `TransferMessage`.
+struct TransferMessage: Identifiable, Equatable {
+    let id = UUID()
+    let title: String
+    let text: String
+    let isError: Bool
+}
+
+/// Крок імпорту, що чекає рішення користувача (ARCHITECTURE §10, як macOS `ImportStage`): вибір режиму, далі —
+/// підтвердження заміни. `URL` — уже локальна тимчасова копія вибраного файлу (`ImportFileStager`).
+enum ImportStage: Equatable {
+    /// Файл вибрано й скопійовано; діалог «Об'єднати» (за замовчуванням) / «Замінити…».
+    case chooseMode(URL)
+    /// Вибрано «Замінити…»; алерт підтвердження з попередженням про бекап.
+    case confirmReplace(URL)
+
+    var url: URL {
+        switch self {
+        case .chooseMode(let url), .confirmReplace(let url):
+            return url
+        }
+    }
+}
+
 /// Міст між ядром і SwiftUI на iOS (IOS_PLAN DI5, §4): ті самі `DictionaryRepository`, `EntryQuery`,
 /// `AddWordUseCase`, `PendingQueueProcessor` і `VariantBackfillProcessor`, що й на macOS; логіка — дзеркало
 /// macOS `AppModel` без AppKit (панелі, автозапуск, тема, Services). Усі `@Published` змінюються лише на головному
@@ -63,6 +87,18 @@ final class MobileAppModel: ObservableObject {
     @Published private(set) var voiceLanguage: VoiceLanguage
     /// I3: звіт останнього непорожнього інжесту inbox «Поділитися» для `InboxBanner`; `nil` — банер приховано.
     @Published private(set) var inboxReport: InboxIngestReport?
+    /// I5: результат експорту/імпорту (алерт); `nil` — алерт приховано.
+    @Published var transferMessage: TransferMessage?
+    /// I5: імпорт чекає вибору режиму або підтвердження заміни (`ImportModeDialog`).
+    @Published private(set) var importStage: ImportStage?
+    /// I5: іде підготовка експорту або імпорт (кнопки вимкнено, повторний виклик нічого не робить).
+    @Published private(set) var isTransferring = false
+    /// I5: показати `fileExporter` (байти — у `preparedExport`).
+    @Published var isExporterPresented = false
+    /// I5: показати `fileImporter`.
+    @Published var isImporterPresented = false
+    /// I5: звіт останнього успішного імпорту.
+    @Published private(set) var lastImportReport: ImportReport?
 
     let container: AppContainer
     /// Підписка на знімки репозиторію (для тестів — щоб перевірити, що вона одна).
@@ -73,6 +109,10 @@ final class MobileAppModel: ObservableObject {
     private(set) var settingsProcessingTask: Task<Void, Never>?
     /// Single-flight `start()`.
     private var startTask: Task<Void, Never>?
+    /// I5: експорт, підготовлений для `fileExporter` (байти схеми v1 і кількість записів того самого знімка).
+    private(set) var preparedExport: PreparedExport?
+    /// I5: обробка імпортованих pending-записів (один прохід черги) — для тестів, щоб дочекатися.
+    private(set) var postImportProcessing: Task<Void, Never>?
 
     init(container: AppContainer) {
         self.container = container
@@ -630,6 +670,204 @@ final class MobileAppModel: ObservableObject {
     /// Перечитує кількість резервних копій (при відкритті Налаштувань).
     func refreshStorageInfo() {
         backupCount = container.backupCount()
+    }
+
+    // MARK: - Експорт / імпорт (I5, ARCHITECTURE §10; логіка — дзеркало macOS `AppModel`)
+
+    /// Максимум причин пропуску в тексті звіту імпорту (решта — «…та ще N»), як на macOS.
+    static let maxReportedSkipReasons = 5
+
+    /// Ім'я файлу експорту за замовчуванням (`dictionary.json`, як на macOS).
+    static var exportFileName: String {
+        DictionaryFileFormat.defaultFileName
+    }
+
+    /// Можна почати експорт/імпорт: словник завантажено, інша операція перенесення не йде.
+    var canTransfer: Bool {
+        isLoaded && !isTransferring
+    }
+
+    /// «Експортувати»: знімок `repository.loadedEntries()` → `DictionaryExporter` (схема v1, ті самі налаштування
+    /// енкодера, що й macOS) → `preparedExport` і `isExporterPresented = true` (UI показує `fileExporter`, звідки
+    /// файл зберігається у Files; AirDrop — з Files → «Поділитися»). Помилка → `transferMessage`. Повертає `true`,
+    /// якщо експорт підготовлено.
+    @discardableResult
+    func prepareExport() async -> Bool {
+        guard canTransfer else { return false }
+        isTransferring = true
+        defer { isTransferring = false }
+        do {
+            let entries = try await container.repository.loadedEntries()
+            let data = try DictionaryExporter.exportData(entries: entries, now: container.dateProvider.now())
+            preparedExport = PreparedExport(data: data, entryCount: entries.count, fileName: Self.exportFileName)
+            isExporterPresented = true
+            return true
+        } catch {
+            preparedExport = nil
+            transferMessage = TransferMessage(
+                title: L10n.text(.transferExportFailedTitle),
+                text: Self.exportErrorMessage(error),
+                isError: true
+            )
+            return false
+        }
+    }
+
+    /// Результат `fileExporter`: успіх → «Записів: N. Файл: <ім'я>»; скасування → нічого; помилка запису → алерт.
+    func finishExport(_ result: Result<URL, Error>) {
+        let prepared = preparedExport
+        preparedExport = nil
+        isExporterPresented = false
+        switch result {
+        case .success(let url):
+            let count = prepared?.entryCount ?? 0
+            transferMessage = TransferMessage(
+                title: L10n.text(.transferExportedTitle),
+                text: L10n.text(.transferExportedText, ["count": String(count), "path": url.lastPathComponent])
+                    + "\n\n" + L10n.text(.mobileTransferAirDropHint),
+                isError: false
+            )
+        case .failure(let error):
+            guard !DocumentPickerError.isUserCancellation(error) else { return }
+            transferMessage = TransferMessage(
+                title: L10n.text(.transferExportFailedTitle),
+                text: L10n.text(.transferWriteFailed, ["reason": FileErrorText.describe(error)]),
+                isError: true
+            )
+        }
+    }
+
+    /// «Імпортувати»: показує `fileImporter`.
+    func beginImport() {
+        guard canTransfer, importStage == nil else { return }
+        isImporterPresented = true
+    }
+
+    /// Результат `fileImporter`: файл копіюється з security-scoped URL у тимчасовий каталог (`ImportFileStager`),
+    /// далі — діалог вибору режиму (`importStage = .chooseMode`). Скасування → нічого; помилка копіювання → алерт
+    /// (словник не змінено).
+    func handleImportSelection(_ result: Result<URL, Error>) {
+        isImporterPresented = false
+        switch result {
+        case .success(let url):
+            guard canTransfer, importStage == nil else { return }
+            do {
+                let staged = try container.importStager.stage(url)
+                importStage = .chooseMode(staged)
+            } catch {
+                showImportFailure(error)
+            }
+        case .failure(let error):
+            guard !DocumentPickerError.isUserCancellation(error) else { return }
+            showImportFailure(error)
+        }
+    }
+
+    /// Вибір режиму: «Об'єднати» — одразу імпорт; «Замінити» — спершу підтвердження (`.confirmReplace`).
+    /// Стан змінюється синхронно (до закриття діалогу SwiftUI); повертає задачу імпорту для «Об'єднати».
+    @discardableResult
+    func selectImportMode(_ mode: ImportMode) -> Task<Void, Never>? {
+        guard case .chooseMode(let url)? = importStage else { return nil }
+        switch mode {
+        case .merge:
+            importStage = nil
+            return Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.import(from: url, mode: .merge)
+            }
+        case .replace:
+            importStage = .confirmReplace(url)
+            return nil
+        }
+    }
+
+    /// Підтверджено «Замінити» (поточний словник буде збережено в Backups). Повертає задачу імпорту.
+    @discardableResult
+    func confirmReplaceImport() -> Task<Void, Never>? {
+        guard case .confirmReplace(let url)? = importStage else { return nil }
+        importStage = nil
+        return Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.import(from: url, mode: .replace)
+        }
+    }
+
+    /// Скасування діалогу режиму/підтвердження: тимчасова копія видаляється, словник не змінюється.
+    func cancelImport() {
+        guard let stage = importStage else { return }
+        importStage = nil
+        container.importStager.discard(stage.url)
+    }
+
+    /// Імпорт з локальної копії `url` через `DictionaryTransferService` у фоновій задачі (DI18). Успіх →
+    /// `lastImportReport` і `transferMessage` зі звітом (додано/оновлено/пропущено + причини, D1/D13), список і
+    /// кількість бекапів оновлюються, імпортовані `pending` — **один** прохід черги (`.imported`, без backoff;
+    /// нове слово — 1 запит, дубль уже відсіяно merge — 0). Помилка → `transferMessage` (словник не змінено).
+    /// Тимчасова копія видаляється за будь-якого результату.
+    @discardableResult
+    func `import`(from url: URL, mode: ImportMode) async -> ImportReport? {
+        let stager = container.importStager
+        defer { stager.discard(url) }
+        guard isLoaded, !isTransferring else { return nil }
+        isTransferring = true
+        defer { isTransferring = false }
+        let transfer = container.transfer
+        let outcome: Result<ImportReport, Error> = await container.backgroundTasks.run(named: "VocabImport") {
+            do {
+                return .success(try await transfer.importDictionary(from: url, mode: mode))
+            } catch {
+                return .failure(error)
+            }
+        }
+        switch outcome {
+        case .success(let report):
+            lastImportReport = report
+            transferMessage = TransferMessage(
+                title: L10n.text(.transferImportedTitle),
+                text: Self.reportText(report),
+                isError: false
+            )
+            await refreshEntries()
+            refreshStorageInfo()
+            if entries.contains(where: { $0.status == .pending }) {
+                postImportProcessing = Task<Void, Never> { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.processPending(trigger: .imported)
+                }
+            }
+            return report
+        case .failure(let error):
+            showImportFailure(error)
+            return nil
+        }
+    }
+
+    /// Текст звіту: «Додано X, оновлено Y, пропущено Z» і перші причини пропуску (як macOS).
+    static func reportText(_ report: ImportReport) -> String {
+        guard !report.skippedReasons.isEmpty else { return report.summary }
+        var lines = report.skippedReasons.prefix(maxReportedSkipReasons).map { "• \($0)" }
+        let rest = report.skippedReasons.count - maxReportedSkipReasons
+        if rest > 0 {
+            lines.append(L10n.text(.transferReportMore, ["count": String(rest)]))
+        }
+        return report.summary + "\n\n" + L10n.text(.transferReportSkippedHeader) + "\n" + lines.joined(separator: "\n")
+    }
+
+    private func showImportFailure(_ error: Error) {
+        let message = (error as? ImportError)?.userMessage
+            ?? L10n.text(.transferImportFailedGeneric, ["reason": FileErrorText.describe(error)])
+        transferMessage = TransferMessage(
+            title: L10n.text(.transferImportFailedTitle),
+            text: message,
+            isError: true
+        )
+    }
+
+    private static func exportErrorMessage(_ error: Error) -> String {
+        if case .writeFailed(let reason)? = error as? StorageError {
+            return L10n.text(.transferWriteFailed, ["reason": reason])
+        }
+        return message(for: error)
     }
 
     // MARK: - Озвучення

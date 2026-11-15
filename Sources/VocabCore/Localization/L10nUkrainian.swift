@@ -318,6 +318,11 @@ enum L10nUkrainian {
         case .intentAddTranslating: return "Збережено «{word}». Переклад ще триває — відкрийте VocabApp, щоб побачити результат."
         case .intentAddLoadFailed: return "Не вдалося відкрити словник, тому слово не збережено: {reason}"
         case .intentAddEmpty: return "Не додано: немає слова. Скажіть або введіть слово чи коротку фразу."
+        case .mobileTransferSection: return "Синхронізація з Mac"
+        case .mobileTransferExport: return "Експортувати у «Файли»…"
+        case .mobileTransferImport: return "Імпортувати з «Файлів»…"
+        case .mobileTransferAirDropHint: return "Щоб надіслати через AirDrop: збережіть у «Файли», потім відкрийте файл там і натисніть «Поділитися»."
+        case .mobileTransferHint: return "Експорт зберігає dictionary.json з усіма записами, зокрема італійськими версіями. Імпорт: «Об'єднати» додає нові записи, а при конфлікті перемагає пізніша зміна; «Замінити» спершу зберігає поточний словник у Backups. Видалення не синхронізуються."
         }
     }
 }

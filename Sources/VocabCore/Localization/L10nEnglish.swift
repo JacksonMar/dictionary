@@ -318,6 +318,11 @@ enum L10nEnglish {
         case .intentAddTranslating: return "Saved “{word}”. It is still being translated — open VocabApp to see the result."
         case .intentAddLoadFailed: return "The dictionary could not be opened, so the word was not saved: {reason}"
         case .intentAddEmpty: return "Not added: there is no word. Say or type a word or a short phrase."
+        case .mobileTransferSection: return "Sync with Mac"
+        case .mobileTransferExport: return "Export to Files…"
+        case .mobileTransferImport: return "Import from Files…"
+        case .mobileTransferAirDropHint: return "To send via AirDrop: save to Files, then Share from Files."
+        case .mobileTransferHint: return "Export saves dictionary.json with all entries, Italian versions included. Import: “Merge” adds new entries, and in a conflict the more recent change wins; “Replace” saves the current dictionary to Backups first. Deletions are not synced."
         }
     }
 }
