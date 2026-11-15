@@ -1,0 +1,16 @@
+// Signing.xcconfig — committed defaults for the iOS targets (IOS_PLAN.md §6).
+//
+// Never put a real Team ID here. Personal values live in Config/Local.xcconfig (gitignored),
+// created from Config/Local.example.xcconfig. Order matters: defaults first, then the optional
+// local include overrides them, then derived settings reference the (possibly overridden) values.
+
+// Defaults (overridden by Local.xcconfig if it exists).
+VOCAB_DEVELOPMENT_TEAM =
+VOCAB_BUNDLE_ID_PREFIX = com.example.vocab
+
+// Optional local overrides: Team ID and a globally unique bundle ID prefix.
+#include? "Local.xcconfig"
+
+// Derived settings.
+DEVELOPMENT_TEAM = $(VOCAB_DEVELOPMENT_TEAM)
+VOCAB_APP_GROUP = group.$(VOCAB_BUNDLE_ID_PREFIX)

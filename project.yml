@@ -1,7 +1,7 @@
 name: VocabApp
 options:
   bundleIdPrefix: com.vocabapp
-  deploymentTarget: { macOS: "13.0" }
+  deploymentTarget: { macOS: "13.0", iOS: "17.0" }
   # M9 (D38): `*.lproj` у `App/Resources` стають variant group; базова мова — англійська.
   developmentLanguage: en
 settings:
@@ -12,6 +12,21 @@ settings:
     CODE_SIGN_STYLE: Manual
     DEVELOPMENT_TEAM: ""
     ENABLE_HARDENED_RUNTIME: NO
+# I0 (IOS_PLAN.md §2, §6): shared settings of all iOS targets. Signing values come from
+# Config/Signing.xcconfig (+ gitignored Config/Local.xcconfig). Target-level settings beat the xcconfig,
+# so DEVELOPMENT_TEAM is pinned to the xcconfig variable here and never to a literal Team ID.
+settingGroups:
+  iosCommon:
+    CODE_SIGN_STYLE: Automatic
+    # Project base "-" is for macOS ad-hoc signing only: devices use the Automatic "Apple Development"
+    # identity, the simulator stays ad-hoc ("-"). Conditional keys also replace XcodeGen's iOS presets.
+    CODE_SIGN_IDENTITY: "Apple Development"
+    "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development"
+    "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+    DEVELOPMENT_TEAM: "$(VOCAB_DEVELOPMENT_TEAM)"
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
 packages:
   VocabCore: { path: . }
 targets:
@@ -38,6 +53,74 @@ targets:
       base: { GENERATE_INFOPLIST_FILE: YES, PRODUCT_BUNDLE_IDENTIFIER: com.vocabapp.VocabAppTests }
     dependencies:
       - target: VocabApp          # hosted tests: TEST_HOST = VocabApp.app
+  # MARK: iOS (I0 spike: no VocabCore dependency yet; the spike code is replaced in I1a)
+  VocabMobile:
+    type: application
+    platform: iOS
+    sources: [Mobile/Sources, Mobile/Resources]
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      groups: [iosCommon]
+      base:
+        PRODUCT_NAME: VocabMobile
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAB_BUNDLE_ID_PREFIX).VocabMobile"
+        INFOPLIST_FILE: Mobile/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Mobile/VocabMobile.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: VocabShare
+        embed: true
+      - target: VocabWidget
+        embed: true
+  VocabShare:
+    type: app-extension
+    platform: iOS
+    sources: [Extensions/Share/Sources]
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      groups: [iosCommon]
+      base:
+        PRODUCT_NAME: VocabShare
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAB_BUNDLE_ID_PREFIX).VocabMobile.Share"
+        INFOPLIST_FILE: Extensions/Share/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Extensions/Share/VocabShare.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+  VocabWidget:
+    type: app-extension
+    platform: iOS
+    sources: [Extensions/Widget/Sources]
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      groups: [iosCommon]
+      base:
+        PRODUCT_NAME: VocabWidget
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAB_BUNDLE_ID_PREFIX).VocabMobile.Widget"
+        INFOPLIST_FILE: Extensions/Widget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+        # No entitlements: the widget has no App Group (IOS_PLAN.md I4).
+  VocabMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Mobile/Tests]
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      groups: [iosCommon]
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAB_BUNDLE_ID_PREFIX).VocabMobileTests"
+    dependencies:
+      - target: VocabMobile       # hosted tests: TEST_HOST = VocabMobile.app
 schemes:
   VocabApp:
     build:
@@ -45,3 +128,9 @@ schemes:
     test:
       config: Debug
       targets: [VocabAppTests]
+  VocabMobile:
+    build:
+      targets: { VocabMobile: all, VocabMobileTests: [test] }
+    test:
+      config: Debug
+      targets: [VocabMobileTests]

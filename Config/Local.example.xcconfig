@@ -1,0 +1,26 @@
+// Local.example.xcconfig — template for Config/Local.xcconfig (IOS_PLAN.md §6).
+//
+// 1. Copy this file:  cp Config/Local.example.xcconfig Config/Local.xcconfig
+//    Config/Local.xcconfig is listed in .gitignore and must never be committed.
+// 2. Fill in the two values below, then run `xcodegen generate`.
+//
+// How to find your Team ID (free Apple ID / Personal Team works):
+//   Xcode -> Settings -> Accounts -> "+" -> Apple ID -> sign in; a "Personal Team" appears.
+//   Open VocabApp.xcodeproj -> target VocabMobile -> Signing & Capabilities -> Team: choose your team.
+//   Then Build Settings -> search "DEVELOPMENT_TEAM" -> copy the 10-character value here.
+//   (The team chosen in the Xcode UI is lost on the next `xcodegen generate`; this file is not.)
+//
+// Bundle ID prefix: bundle IDs are globally unique, so use something of your own, e.g.
+//   com.<your-nickname>.vocab
+// The targets become <prefix>.VocabMobile, <prefix>.VocabMobile.Share, <prefix>.VocabMobile.Widget,
+// and the App Group becomes group.<prefix>.
+// A free account can register only a limited number of new App IDs per week, so do not change
+// the prefix without a reason.
+//
+// Switching to a paid account later: change VOCAB_DEVELOPMENT_TEAM, run `xcodegen generate`, Run.
+
+// Your 10-character Team ID (leave the value empty in this template).
+VOCAB_DEVELOPMENT_TEAM =
+
+// Your unique bundle ID prefix (no trailing dot).
+VOCAB_BUNDLE_ID_PREFIX = com.example.vocab
