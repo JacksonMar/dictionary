@@ -63,6 +63,9 @@ Mobile/
             SpeechRecognizing.swift    # протокол: authorize(), start(locale:onDevice:) -> AsyncStream<RecognitionUpdate>, stop()
             SpeechRecognitionService.swift  # SFSpeechRecognizer + AVAudioEngine
             AudioSessionController.swift    # .record/.measurement ↔ .playback для озвучення
+            VoiceSupport.swift              # (I2b) VoiceLanguageStoring, VoiceTimerScheduling, VoiceWordSubmitting,
+                                            # AudioSessionControlling, SpeechCompletionReporting
+            VoiceSpeechService.swift        # (I2b) iOS-адаптер озвучення з колбеком завершення (macOS SpeechService не змінюється)
     Platform/ InboxLocation.swift (App Group URL із Info.plist-ключа VocabAppGroupID), BackgroundTaskRunner.swift,
               DocumentFiles.swift (FileDocument для .json, копія security-scoped URL)
     Intents/  AddToDictionaryIntent.swift, StartVoiceCaptureIntent.swift, VoiceLanguageAppEnum.swift, VocabShortcuts.swift

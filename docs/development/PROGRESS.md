@@ -19,7 +19,8 @@
 | I1a — Ядро на iOS + каркас + список | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 21 мобільний тест у харнесі; iOS-збірка — Mac |
 | I1b — CRUD, Claude, Settings/Keychain | done (⏳ Mac) | 1 | PASS умовний — Linux 552 + 41 мобільний тест; iOS-збірка й Keychain — Mac |
 | I2a — Підказка мови в ядрі | done | 1 | PASS — Linux 574 тести (+22 LanguageHintTests); macOS-регресія — у Mac-промпт I2b |
-| I2b — Голосове введення (UI) | in progress | – | – |
+| I2b — Голосове введення (UI) | done (⏳ Mac) | 1 | PASS умовний — Linux 576 + 72 мобільні тести; Speech/AVFoundation/SwiftUI — Mac |
+| I3 — Share Extension + inbox | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -156,6 +157,13 @@ _(вердикти Judge — нижче по етапах)_
 - Відхилення: змінено `DictionaryRepository.swift` (add копіює підказку; update її зберігає; збереження як ready очищує — зокрема ручне заповнення). Два еквівалентні мутанти (надлишкові guard-и в `PromptBuilder` і `EntryProcessor`) — прийнято як захист у глибину.
 - Токени: слово з підказкою — 1 запит; італійський дубль ready-варіанта — 0.
 - Обов'язково в Mac-промпті I2b: macOS-регресія `xcodebuild test -scheme VocabApp`.
+
+#### I2b — ітерація 1: PASS (умовний)
+- `VoiceCaptureModel` (tap-to-talk, автостоп 1,5 с тиші / 10 с, підтвердження кнопкою «Додати» — iU15), `SpeechRecognitionService` (on-device за наявності, інакше серверне з позначкою, офлайн без on-device → помилка + ручне поле), перемикач EN|IT (`voiceLanguage`), підказка мови → 1 запит / дубль 0, `vocabapp://voice[?lang=it]` слухає одразу лише з дозволами.
+- Tester: аудіосесія не вимикалась після «Озвучити» (музика лишалась приглушеною) і можливе вічне «Завершення розпізнавання…» → виправлено до Judge (деактивація після озвучення/закриття, finalize timeout 3 с).
+- Відхилення: `VoiceSupport.swift`, `VoiceSpeechService.swift` (iOS-адаптер), `cancel()` у `SpeechRecognizing`, `VoiceWordSubmitting`, мова з глибокого посилання — лише на сеанс, глибоке посилання без запитаного дозволу → idle («торкніться мікрофона», системний запит при дотику) замість окремого екрана дозволу; плаваюча кнопка мікрофона в списку.
+- Перенесено в I3: `AddWordSheet.swift:68` `.onDisappear { voice.cancel() }` на Form спрацьовує і при переході «Заповнити вручну» → перенести на рівень аркуша.
+- ⏳ Mac: `manual-tests/I2b.md` (§0 — промпт з macOS-регресією; пристрій: повторний старт двигуна S7/D3, музика A4/A5). На iOS очікується 76 тестів.
 
 ## Відкриті питання / невизначеності щодо macOS API
 
