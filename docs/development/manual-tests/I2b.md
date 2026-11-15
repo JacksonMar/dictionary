@@ -33,7 +33,7 @@ xcodebuild test -project VocabApp.xcodeproj -scheme VocabMobile -destination 'pl
 | # | Крок | Очікуваний результат | Результат |
 |---|---|---|---|
 | T1 | macOS-регресія (`-scheme VocabApp`) | `** TEST SUCCEEDED **`, 0 падінь; записати кількість тестів. macOS-файли не змінювались; ядро — I2a (`languageHint`) + нові ключі `voice.*` | |
-| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`; записати кількість (I1b: 45 + нові тести I2b від Tester: `VoiceCaptureModelTests`, `RecognitionConfigTests`, `InfoPlistMobileTests`). Keychain-тести під Планом Б — як в `I1b.md` T2 | |
+| T2 | Симулятор (`-scheme VocabMobile`) | `** TEST SUCCEEDED **`; очікувано **73** тести, 0 падінь (I1b: 45 + I2b: 28 — `VoiceCaptureModelTests` 17, `RecognitionConfigTests` 3, `MobileVoiceSubmitTests` 3, `VoiceWiringTests` 4, `InfoPlistMobileTests` 1). `InfoPlistMobileTests` читає `InfoPlist.strings` із зібраного `.app` — якщо падає, записати повідомлення дослівно (разом із T4). Keychain-тести під Планом Б — як в `I1b.md` T2 | |
 | T3 | Попередження збірки `VocabMobile` у `Mobile/Sources/Voice/{SpeechRecognitionService,AudioSessionController,VoiceCaptureModel,SpeechRecognizing,VoiceSupport}.swift`, `Views/VoiceCaptureView.swift`, `Views/AddWordSheet.swift` | Немає (записати дослівно, якщо є — особливо про `Sendable`/actor isolation) | |
 | T4 | Xcode → таргет `VocabMobile` → Build Phases → Copy Bundle Resources | Є `InfoPlist.strings` (variant group з `en` і `uk`); у зібраному `.app` — `en.lproj/InfoPlist.strings`, `uk.lproj/InfoPlist.strings` | |
 | T5 | `plutil -p <DerivedData>/…/VocabMobile.app/Info.plist \| grep -E 'NSMicrophone\|NSSpeech\|CFBundleLocalizations' -A2` | Обидва ключі дозволів і `CFBundleLocalizations = (en, uk)` | |
