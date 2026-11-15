@@ -1,0 +1,21 @@
+/* System-read App Intents metadata (IOS_PLAN DI17, stage I4): intent titles, descriptions, parameters, the
+   language enum, parameter summaries and App Shortcut short titles. Keys are the English literals from
+   Mobile/Sources/Intents/*.swift. All other app text comes from L10n (VocabCore). */
+
+/* AddToDictionaryIntent */
+"Add to Dictionary" = "Add to Dictionary";
+"Translates a word or a short phrase with Claude and saves it to VocabApp." = "Translates a word or a short phrase with Claude and saves it to VocabApp.";
+"Word" = "Word";
+"Which word?" = "Which word?";
+"Add ${text} to the dictionary" = "Add ${text} to the dictionary";
+
+/* StartVoiceCaptureIntent */
+"Add by Voice" = "Add by Voice";
+"Opens VocabApp and starts listening for a word." = "Opens VocabApp and starts listening for a word.";
+"Add a word by voice in ${language}" = "Add a word by voice in ${language}";
+
+/* VoiceLanguageAppEnum */
+"Language" = "Language";
+"Auto" = "Auto";
+"English" = "English";
+"Italian" = "Italian";

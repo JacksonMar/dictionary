@@ -19,7 +19,8 @@ struct VocabMobileApp: App {
         let container = AppContainer.shared
         L10n.setCurrent(container.settings.interfaceLanguage)
         _model = StateObject(wrappedValue: MobileAppModel(container: container))
-        _router = StateObject(wrappedValue: Router())
+        // I4: той самий `Router`, що й у `StartVoiceCaptureIntent` (`AppContainer.shared.router`).
+        _router = StateObject(wrappedValue: container.router)
     }
 
     var body: some Scene {

@@ -316,4 +316,7 @@ public enum L10nKey: String, CaseIterable, Sendable {
     case inboxRejected = "inbox.rejected"
     case inboxFailed = "inbox.failed"
     case inboxDismiss = "inbox.dismiss"
+    case intentAddTranslating = "intent.add.translating"
+    case intentAddLoadFailed = "intent.add.loadFailed"
+    case intentAddEmpty = "intent.add.empty"
 }

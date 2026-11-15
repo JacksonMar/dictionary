@@ -1,0 +1,6 @@
+/* VocabWidget (IOS_PLAN DI17, stage I4): the widget gallery name/description and the widget's own labels.
+   Read by the system and by Text("widget.…") in Extensions/Widget/Sources/VoiceCaptureWidget.swift. */
+"widget.voice.displayName" = "Add by Voice";
+"widget.voice.description" = "Opens VocabApp and starts listening for a word right away.";
+"widget.voice.title" = "VocabApp";
+"widget.voice.action" = "Tap to speak a word";

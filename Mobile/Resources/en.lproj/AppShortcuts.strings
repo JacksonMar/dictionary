@@ -1,0 +1,12 @@
+/* App Shortcuts phrases (IOS_PLAN DI17, stage I4). Keys are the phrases from VocabShortcuts.swift with
+   ${applicationName} in place of \(.applicationName); every value must keep ${applicationName}. */
+
+/* AddToDictionaryIntent */
+"Add a word to ${applicationName}" = "Add a word to ${applicationName}";
+"Add to ${applicationName}" = "Add to ${applicationName}";
+"Translate with ${applicationName}" = "Translate with ${applicationName}";
+
+/* StartVoiceCaptureIntent */
+"Add a word by voice to ${applicationName}" = "Add a word by voice to ${applicationName}";
+"Listen with ${applicationName}" = "Listen with ${applicationName}";
+"Start ${applicationName} voice input" = "Start ${applicationName} voice input";

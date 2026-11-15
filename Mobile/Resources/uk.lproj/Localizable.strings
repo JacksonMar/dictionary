@@ -1,0 +1,20 @@
+/* System-read App Intents metadata (IOS_PLAN DI17, stage I4). Keys are the English literals from
+   Mobile/Sources/Intents/*.swift. All other app text comes from L10n (VocabCore). */
+
+/* AddToDictionaryIntent */
+"Add to Dictionary" = "Додати до словника";
+"Translates a word or a short phrase with Claude and saves it to VocabApp." = "Перекладає слово або коротку фразу через Claude і зберігає у VocabApp.";
+"Word" = "Слово";
+"Which word?" = "Яке слово?";
+"Add ${text} to the dictionary" = "Додати ${text} до словника";
+
+/* StartVoiceCaptureIntent */
+"Add by Voice" = "Додати голосом";
+"Opens VocabApp and starts listening for a word." = "Відкриває VocabApp і одразу слухає слово.";
+"Add a word by voice in ${language}" = "Додати слово голосом: ${language}";
+
+/* VoiceLanguageAppEnum */
+"Language" = "Мова";
+"Auto" = "Авто";
+"English" = "Англійська";
+"Italian" = "Італійська";

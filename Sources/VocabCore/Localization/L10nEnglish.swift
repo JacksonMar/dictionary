@@ -315,6 +315,9 @@ enum L10nEnglish {
         case .inboxRejected: return "Not added (empty, longer than 120 characters or more than 8 words): {count}"
         case .inboxFailed: return "Not saved yet, will be retried next time you open the app: {count}"
         case .inboxDismiss: return "Dismiss"
+        case .intentAddTranslating: return "Saved “{word}”. It is still being translated — open VocabApp to see the result."
+        case .intentAddLoadFailed: return "The dictionary could not be opened, so the word was not saved: {reason}"
+        case .intentAddEmpty: return "Not added: there is no word. Say or type a word or a short phrase."
         }
     }
 }

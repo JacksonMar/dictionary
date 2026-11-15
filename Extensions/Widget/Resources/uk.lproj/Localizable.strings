@@ -1,0 +1,5 @@
+/* VocabWidget (IOS_PLAN DI17, stage I4): the widget gallery name/description and the widget's own labels. */
+"widget.voice.displayName" = "Додати голосом";
+"widget.voice.description" = "Відкриває VocabApp і одразу слухає слово.";
+"widget.voice.title" = "VocabApp";
+"widget.voice.action" = "Торкніться й скажіть слово";

@@ -315,6 +315,9 @@ enum L10nUkrainian {
         case .inboxRejected: return "Не додано (порожньо, довше за 120 символів або більше 8 слів): {count}"
         case .inboxFailed: return "Ще не збережено, повторна спроба під час наступного відкриття: {count}"
         case .inboxDismiss: return "Закрити"
+        case .intentAddTranslating: return "Збережено «{word}». Переклад ще триває — відкрийте VocabApp, щоб побачити результат."
+        case .intentAddLoadFailed: return "Не вдалося відкрити словник, тому слово не збережено: {reason}"
+        case .intentAddEmpty: return "Не додано: немає слова. Скажіть або введіть слово чи коротку фразу."
         }
     }
 }

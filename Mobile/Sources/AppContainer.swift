@@ -15,7 +15,7 @@ enum DictionaryLoadOutcome: Equatable, Sendable {
 /// Композиційний корінь iOS-застосунку (IOS_PLAN §2, §4): одне сховище, один `DictionaryRepository` (actor) на
 /// процес, налаштування, реєстр мовних пар, API-ключ (`SecretStore`), Claude (`ClaudeLookupService`), черга
 /// (`EntryProcessor` → `PendingQueueProcessor`), `AddWordUseCase`, доповнення варіантів (`VariantBackfillProcessor`),
-/// фонові задачі, озвучення, inbox «Поділитися» (`InboxStore` → `InboxIngestor`, I3). Композиція — як macOS `ClaudeServices.make` (`App/Sources/AppModel.swift`).
+/// фонові задачі, озвучення, inbox «Поділитися» (`InboxStore` → `InboxIngestor`, I3), `Router` процесу (I4). Композиція — як macOS `ClaudeServices.make` (`App/Sources/AppModel.swift`).
 ///
 /// Завантаження — single-flight: перший `ensureLoaded()` створює й кешує `Task` з `repository.load()`; наступні
 /// виклики (UI, intent-и, повторний `.active`) чекають на той самий `Task`. Помилка кешується (як на macOS):
@@ -62,6 +62,9 @@ final class AppContainer {
     let inbox: InboxStore?
     /// I3: інжест inbox (single-flight, §4); `nil` разом з `inbox`.
     let inboxIngestor: InboxIngestor?
+    /// I4: маршрут UI процесу — один на процес, щоб `StartVoiceCaptureIntent` (виконується в процесі застосунку) і
+    /// глибокі посилання відкривали той самий аркуш, що бачить `VocabMobileApp`.
+    let router: Router
 
     private var loadTask: Task<DictionaryLoadOutcome, Never>?
     /// Результат завершеного завантаження; `nil` — ще не завантажено (або завантаження триває).
@@ -154,6 +157,7 @@ final class AppContainer {
         self.speechRecognizer = speechRecognizer
         self.audioSession = audioSession
         self.voiceLanguageStore = voiceLanguageStore
+        self.router = Router()
         if let inboxDirectory {
             let inbox = InboxStore(directory: inboxDirectory, fileSystem: fileSystem)
             self.inbox = inbox

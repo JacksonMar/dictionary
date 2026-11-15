@@ -114,7 +114,8 @@ targets:
   VocabWidget:
     type: app-extension
     platform: iOS
-    sources: [Extensions/Widget/Sources]
+    # I4: `Resources/{en,uk}.lproj/Localizable.strings` — gallery name/description and widget labels (DI17).
+    sources: [Extensions/Widget/Sources, Extensions/Widget/Resources]
     configFiles:
       Debug: Config/Signing.xcconfig
       Release: Config/Signing.xcconfig

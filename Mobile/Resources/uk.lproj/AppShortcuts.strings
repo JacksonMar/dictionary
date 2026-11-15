@@ -1,0 +1,12 @@
+/* App Shortcuts phrases (IOS_PLAN DI17, stage I4). Siri does not support Ukrainian (iU7): these phrases are shown
+   in the Shortcuts app. Every value must keep ${applicationName}. */
+
+/* AddToDictionaryIntent */
+"Add a word to ${applicationName}" = "Додати слово в ${applicationName}";
+"Add to ${applicationName}" = "Додати в ${applicationName}";
+"Translate with ${applicationName}" = "Перекласти в ${applicationName}";
+
+/* StartVoiceCaptureIntent */
+"Add a word by voice to ${applicationName}" = "Додати слово голосом в ${applicationName}";
+"Listen with ${applicationName}" = "Слухати в ${applicationName}";
+"Start ${applicationName} voice input" = "Голосове введення в ${applicationName}";

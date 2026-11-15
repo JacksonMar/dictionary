@@ -15,6 +15,9 @@ import os
 /// У лог — лише вид результату, ніколи не текст.
 final class ShareViewController: UIViewController {
     private static let autoCloseDelay: TimeInterval = 1.2
+    /// Скільки чекати на вкладення (`loadItem`): після цього зберігаємо зібране досі, щоб лист не зависав у
+    /// «Збереження…» (I4, перенесено з I3).
+    private nonisolated static let loadTimeout: TimeInterval = 5
 
     private let logger = Logger(subsystem: "VocabShare", category: "share")
     private var model: ShareViewModel?
@@ -96,7 +99,8 @@ final class ShareViewController: UIViewController {
 
     /// Кандидати в порядку елементів: `attributedContentText` кожного елемента і текст кожного вкладення
     /// `public.plain-text`. URL-вкладення не читаються (`ShareTextExtractor` їх однаково ігнорує). `completion` —
-    /// рівно один раз, на головній черзі. `nonisolated`: колбеки `loadItem` приходять з довільних черг.
+    /// рівно один раз, на головній черзі: коли завантажено всі вкладення або через `loadTimeout` — з тим, що встигло
+    /// завантажитись (пізні колбеки ігноруються). `nonisolated`: колбеки `loadItem` приходять з довільних черг.
     private nonisolated static func loadCandidates(
         from inputItems: [Any],
         completion: @escaping @MainActor @Sendable ([ShareTextCandidate]) -> Void
@@ -123,10 +127,21 @@ final class ShareViewController: UIViewController {
                 }
             }
         }
-        group.notify(queue: .main) {
+        let once = MainQueueOnce()
+        let deliver: @Sendable (_ timedOut: Bool) -> Void = { timedOut in
             MainActor.assumeIsolated {
+                guard once.claim() else { return }
+                if timedOut {
+                    Logger(subsystem: "VocabShare", category: "share").error("Attachments not loaded in time")
+                }
                 completion(collector.candidates())
             }
+        }
+        group.notify(queue: .main) {
+            deliver(false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + loadTimeout) {
+            deliver(true)
         }
     }
 
@@ -141,6 +156,20 @@ final class ShareViewController: UIViewController {
             return String(data: data, encoding: .utf8)
         }
         return nil
+    }
+}
+
+/// Прапорець «вже виконано» для двох конкурентів (усі вкладення / тайм-аут); обидва викликають `claim()` лише на
+/// головній черзі, тож блокування не потрібне.
+private final class MainQueueOnce: @unchecked Sendable {
+    private var claimed = false
+
+    /// `true` — лише для першого виклику.
+    func claim() -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard !claimed else { return false }
+        claimed = true
+        return true
     }
 }
 
