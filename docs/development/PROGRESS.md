@@ -192,7 +192,12 @@ _(вердикти Judge — нижче по етапах)_
 
 ### Підсумок iOS
 - Усі етапи I0–I5 пройшли Developer → Tester → Judge (FAIL лише I0 ітерація 1). Linux: ядро 596, мобільний харнес 124.
-- **Жоден iOS-код ще не компілювався в Xcode.** Наступний крок — один прогін на Mac за `docs/development/manual-tests/IOS_ALL.md`; помилки компіляції повертаються оркестратору (окрема ітерація виправлень).
+- 2026-11-16, **перший прогін на Mac** (macOS 27.2.1, Xcode 27.2, симулятор iPhone 18 Pro / iOS 27.2; звіт — `manual-tests/IOS_ALL-report-2026-11-16.md`):
+  - macOS-регресія: **113 тестів, 0 падінь** ✅.
+  - iOS: усі таргети (застосунок, VocabShare, VocabWidget, метадані App Intents) зібрались **без помилок компіляції**; `Undefined symbols` не виникло (запасний план не знадобився).
+  - iOS-тести: **129**, 127 ✅; 2 Keychain-тести впали з -34018 — збірка без підпису (`CODE_SIGNING_ALLOWED=NO`, немає `Local.xcconfig`), очікувано за `IOS_ALL.md` (iU8: без команди симулятор вимагає План Б).
+  - Попередження: `ld … macOS-13.0 … XCTest built for 14.0` (macOS-тести, давнє, не від iOS-етапів); `Metadata extraction skipped` для VocabShare (очікувано).
+  - Умовні PASS I0–I5 підтверджено щодо компіляції й автотестів. Лишається: `Config/Local.xcconfig` → підписаний прогін (Keychain-тести) і ручні чеклісти на iPhone (I0.md … I5.md).
 
 ## Відкриті питання / невизначеності щодо macOS API
 
