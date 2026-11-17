@@ -46,9 +46,9 @@ iOS-збірка відбудеться після I5. Цей файл — **о�
 
 | Набір | Очікування |
 |---|---|
-| Linux (довідково, вже перевірено) | ядро `swift test` — **596**, 0 падінь; мобільний харнес — **124** (106 + 18 `MobileTransferTests`), 0 падінь |
+| Linux (довідково, вже перевірено) | ядро `swift test` — **599** (I6: +3 `InboxIngestorTests`), 0 падінь; мобільний харнес — **131** (106 + 18 `MobileTransferTests` + 7 `ImportCoordinationTests`), 0 падінь |
 | macOS `-scheme VocabApp` | `** TEST SUCCEEDED **`, 0 падінь; кількість — записати N; macOS-файли не змінювались, ядро — лише адитивно, тож N має дорівнювати останньому macOS-прогону до iOS-етапів (за PROGRESS: 113 після M9; якщо інше — пояснити різницю) |
-| iOS `-scheme VocabMobile` | `** TEST SUCCEEDED **`, 0 падінь; **129** = 111 (до I5) + 18 `MobileTransferTests` (план — 6: `testExportRoundTripsThroughCoreImporter`, `testExportFileNameAndContentType`, `testImportCopiesSecurityScopedFileBeforeReading`, `testMergeReportShown`, `testReplaceMakesBackup`, `testImportedPendingProcessedOnce`; додатково 12: скасування, помилки файлу, блокування паралельного перенесення, звіт UK/обрізання причин, ready → 0 запитів, недоступність до завантаження). Лише на iOS (не в Linux-харнесі): hosted `AppLaunchTests`, Keychain-тести, `InfoPlistMobileTests` з бандла |
+| iOS `-scheme VocabMobile` | `** TEST SUCCEEDED **`, 0 падінь; **137** = 111 (до I5) + 18 `MobileTransferTests` + 8 `ImportCoordinationTests` (I6: 7 як у Linux-харнесі + `testLiveCoordinatorCopiesLocalFile` — лише Darwin, справжній `NSFileCoordinator`); 18 `MobileTransferTests` (план — 6: `testExportRoundTripsThroughCoreImporter`, `testExportFileNameAndContentType`, `testImportCopiesSecurityScopedFileBeforeReading`, `testMergeReportShown`, `testReplaceMakesBackup`, `testImportedPendingProcessedOnce`; додатково 12: скасування, помилки файлу, блокування паралельного перенесення, звіт UK/обрізання причин, ready → 0 запитів, недоступність до завантаження). Лише на iOS (не в Linux-харнесі): hosted `AppLaunchTests`, Keychain-тести, `InfoPlistMobileTests` з бандла |
 
 ## 3. Відомий запасний план: `Undefined symbols` у `VocabMobileTests`
 

@@ -245,6 +245,114 @@ final class InboxIngestorTests: XCTestCase {
         XCTAssertEqual(unreadable, InboxIngestReport(failed: 1))
     }
 
+    // MARK: - I6: failed = items left in the inbox after the pass stopped
+
+    /// Після `count` видалень файлів inbox (оброблені елементи) збереження словника починає падати; перший запит до
+    /// Claude (уже в `processAll` після зупинки проходу) відновлює диск, щоб черга могла зберегти результати.
+    private func failDictionaryWrites(afterInboxRemovals count: Int, in inbox: InboxIngestStack) {
+        let removals = InboxRemovalCounter()
+        let dictionaryFS = inbox.stack.fixture.fileSystem
+        inbox.inboxFileSystem.setHook { operation, _ in
+            guard operation == .removeItem else { return }
+            if removals.increment() == count {
+                dictionaryFS.fail(.writeData)
+            }
+        }
+        MockURLProtocol.setHandler { request in
+            dictionaryFS.stopFailing()
+            return InboxIngestFixtures.echoReply(request)
+        }
+    }
+
+    func testStorageFailureMidPassCountsRemainingItems() async throws {
+        let inbox = try await makeStack()
+        try inbox.enqueue(["brisk", "wane", "thrive", "quaint", "ephemeral"])
+        XCTAssertEqual(inbox.inboxFileNames().count, 5)
+        failDictionaryWrites(afterInboxRemovals: 2, in: inbox)
+
+        let report = await inbox.ingestor.ingest()
+
+        XCTAssertEqual(report, InboxIngestReport(queued: 2, duplicates: 0, rejected: 0, failed: 3),
+                       "2 saved; the failing 3rd item + 2 unprocessed ones are left in the inbox")
+        XCTAssertEqual(inbox.inboxFileNames().count, 3, "failed == files actually left")
+        XCTAssertEqual(try inbox.store.pendingItems().map(\.item.text), ["thrive", "quaint", "ephemeral"])
+        XCTAssertEqual(inbox.inboxQueueRuns, 1, "one processAll for the 2 queued words:\n\(inbox.sink.text)")
+        XCTAssertEqual(MockURLProtocol.requestCount, 2)
+        XCTAssertEqual(Set(InboxIngestFixtures.requestedWords()), ["brisk", "wane"])
+        let saved = await inbox.entries()
+        XCTAssertEqual(Set(saved.map(\.word)), ["brisk", "wane"], "failed add not kept in memory")
+        XCTAssertTrue(saved.allSatisfy { $0.status == .ready }, "\(saved.map { ($0.word, $0.status) })")
+        XCTAssertTrue(inbox.sink.text.contains(InboxLog.finished(report)))
+        XCTAssertTrue(inbox.sink.text.contains("failed=3"))
+
+        // Наступна активація забирає решту — рівно 3 нові слова, жодних дублів від невдалої спроби.
+        inbox.inboxFileSystem.setHook(nil)
+        MockURLProtocol.setHandler(InboxIngestFixtures.echoReply)
+        let retry = await inbox.ingestor.ingest()
+        XCTAssertEqual(retry, InboxIngestReport(queued: 3))
+        XCTAssertEqual(MockURLProtocol.requestCount, 5)
+        XCTAssertEqual(inbox.inboxQueueRuns, 2)
+        XCTAssertTrue(inbox.inboxFileNames().isEmpty)
+    }
+
+    func testStorageFailureDoesNotCountEarlierRejectedOrDuplicateItems() async throws {
+        let inbox = try await makeStack(seed: [M7.entry(word: "run")])
+        // rejected (порожньо), duplicate, saved, rejected (9 слів) → збій на "thrive" → лишаються "thrive", "quaint".
+        try inbox.enqueue(["   ", "run", "brisk", "one two three four five six seven eight nine", "thrive", "quaint"])
+        // Видалення: rejected, duplicate, brisk, rejected → після 4-го збереження падає.
+        failDictionaryWrites(afterInboxRemovals: 4, in: inbox)
+
+        let report = await inbox.ingestor.ingest()
+
+        XCTAssertEqual(report, InboxIngestReport(queued: 1, duplicates: 1, rejected: 2, failed: 2),
+                       "rejected/duplicate files were already removed — not part of failed")
+        XCTAssertEqual(try inbox.store.pendingItems().map(\.item.text), ["thrive", "quaint"])
+        XCTAssertEqual(inbox.inboxFileNames().count, report.failed)
+        XCTAssertEqual(inbox.inboxQueueRuns, 1)
+        XCTAssertEqual(InboxIngestFixtures.requestedWords(), ["brisk"])
+
+        // Збій на найпершому валідному елементі після відхиленого: failed = 2 (цей + наступний), rejected = 1.
+        inbox.inboxFileSystem.setHook(nil)
+        MockURLProtocol.setHandler(InboxIngestFixtures.echoReply)
+        _ = await inbox.ingestor.ingest()
+        XCTAssertTrue(inbox.inboxFileNames().isEmpty)
+        try inbox.enqueue(["   ", "brave", "calm"])
+        inbox.stack.fixture.fileSystem.fail(.writeData)
+        let second = await inbox.ingestor.ingest()
+        XCTAssertEqual(second, InboxIngestReport(queued: 0, duplicates: 0, rejected: 1, failed: 2))
+        XCTAssertEqual(try inbox.store.pendingItems().map(\.item.text), ["brave", "calm"])
+        inbox.stack.fixture.fileSystem.stopFailing()
+    }
+
+    func testUnreadableFilesStillCountedAsFailedWithStorageFailure() async throws {
+        let inbox = try await makeStack()
+        try inbox.enqueue(["brisk", "wane", "thrive"])
+        // Битий файл, який не вдалося перенести в Rejected/ → «нечитабельний» (лишається в inbox).
+        try Data("not json".utf8).write(to: inbox.store.directory.appendingPathComponent("0-corrupt.json"))
+        inbox.inboxFileSystem.fail(.moveItem)
+        failDictionaryWrites(afterInboxRemovals: 1, in: inbox)
+
+        let report = await inbox.ingestor.ingest()
+
+        XCTAssertEqual(report, InboxIngestReport(queued: 1, duplicates: 0, rejected: 0, failed: 3),
+                       "1 unreadable + failing item + 1 unprocessed item")
+        XCTAssertEqual(inbox.inboxFileNames().count, 3, "corrupt file + 2 items left")
+        XCTAssertEqual(try inbox.store.pendingItems().map(\.item.text), ["wane", "thrive"])
+
+        // Збій на першому елементі: failed = 1 нечитабельний + усі 2 елементи.
+        inbox.inboxFileSystem.setHook(nil)
+        inbox.stack.fixture.fileSystem.fail(.writeData)
+        MockURLProtocol.setHandler(InboxIngestFixtures.echoReply)
+        let all = await inbox.ingestor.ingest()
+        XCTAssertEqual(all, InboxIngestReport(failed: 3))
+        inbox.stack.fixture.fileSystem.stopFailing()
+
+        // Без збою сховища нечитабельний файл усе одно в failed.
+        let recovered = await inbox.ingestor.ingest()
+        XCTAssertEqual(recovered, InboxIngestReport(queued: 2, failed: 1))
+        inbox.inboxFileSystem.stopFailing()
+    }
+
     func testCrashBetweenAddAndRemoveIsIdempotent() async throws {
         let first = try await makeStack()
         MockURLProtocol.setHandler(InboxIngestFixtures.echoReply)
@@ -382,5 +490,18 @@ final class InboxIngestorTests: XCTestCase {
             _ = await addWord.execute(rawText: "dog")
             XCTAssertEqual(MockURLProtocol.requestCount, 3)
         }
+    }
+}
+
+/// Потокобезпечний лічильник для хуків файлової системи.
+private final class InboxRemovalCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    /// Збільшує й повертає нове значення.
+    func increment() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        value += 1
+        return value
     }
 }
