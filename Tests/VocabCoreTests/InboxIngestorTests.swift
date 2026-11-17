@@ -222,8 +222,8 @@ final class InboxIngestorTests: XCTestCase {
 
         let report = await inbox.ingestor.ingest()
 
-        XCTAssertEqual(report, InboxIngestReport(queued: 0, duplicates: 0, rejected: 0, failed: 1),
-                       "pass stops at the first storage error")
+        XCTAssertEqual(report, InboxIngestReport(queued: 0, duplicates: 0, rejected: 0, failed: 3),
+                       "pass stops at the first storage error; failed counts every item left in the inbox")
         XCTAssertEqual(inbox.inboxFileNames(), before, "files stay in the inbox for the next activation")
         XCTAssertEqual(MockURLProtocol.requestCount, 0)
         XCTAssertEqual(inbox.inboxQueueRuns, 0)

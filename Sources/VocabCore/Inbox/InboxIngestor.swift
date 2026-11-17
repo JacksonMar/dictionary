@@ -9,7 +9,9 @@ public struct InboxIngestReport: Equatable, Sendable {
     /// Відхилені валідацією (`SelectionValidator`: порожньо, > 120 символів, > 8 слів, без літер) або биті файли
     /// (перенесені в `Rejected/`).
     public var rejected: Int
-    /// Не вдалося зберегти/прочитати: файл лишився в inbox, спроба — при наступній активації.
+    /// Не вдалося зберегти/прочитати: файл лишився в inbox, спроба — при наступній активації. Після зупинки проходу
+    /// на помилці сховища — усі елементи цього проходу, що лишились у inbox (невдалий + ще не оброблені), плюс
+    /// нечитабельні файли скану.
     public var failed: Int
 
     public init(queued: Int = 0, duplicates: Int = 0, rejected: Int = 0, failed: Int = 0) {
@@ -39,8 +41,9 @@ public enum InboxLog {
 /// Кожен елемент (у порядку `createdAt`) → `SelectionValidator` → `repository.add` як `pending` (з
 /// `languageHint`, якщо він дозволений парою) → видалення файлу. Дубль — лічильник `duplicates`, файл прибрано,
 /// 0 запитів. Відхилений текст — `rejected`, файл прибрано. Помилка збереження (диск, словник не завантажено) —
-/// `failed`, файл **лишається**, прохід зупиняється (решта — наступного разу). Після проходу — **один**
-/// `processAll` черги (тригер `.inbox`), якщо `queued > 0`.
+/// файл **лишається**, прохід зупиняється (решта — наступного разу); `failed` += невдалий елемент + усі ще не
+/// оброблені елементи проходу (вони теж лишились у inbox — банер «Not saved yet: N» показує реальну кількість).
+/// Після проходу — **один** `processAll` черги (тригер `.inbox`), якщо `queued > 0`.
 ///
 /// Ідемпотентність (DI9): падіння між «додати» і «видалити файл» → наступний прохід побачить дубль (0 запитів).
 /// Single-flight: поки прохід іде, нові виклики `ingest()` чекають на нього й отримують той самий звіт.
@@ -109,7 +112,7 @@ public actor InboxIngestor {
         let pairID = registry.pair(id: configuredPair) != nil ? configuredPair : LanguagePairRegistry.defaultPairID
         let pair = registry.pair(id: pairID)
 
-        for stored in scan.items {
+        for (index, stored) in scan.items.enumerated() {
             let cleaned: CleanedSelection
             switch SelectionValidator.validate(stored.item.text) {
             case .rejected:
@@ -129,8 +132,9 @@ public actor InboxIngestor {
             } catch RepositoryError.duplicate {
                 report.duplicates += 1
             } catch {
-                // Диск / словник не завантажено: файл лишається, решта — наступного разу.
-                report.failed += 1
+                // Диск / словник не завантажено: файл лишається, решта — наступного разу. Лишаються в inbox цей
+                // елемент і всі наступні (вже відхилені/збережені раніше файли прибрано).
+                report.failed += scan.items.count - index
                 logger?.error("Inbox item not saved; ingest stopped")
                 break
             }

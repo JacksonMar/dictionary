@@ -96,6 +96,7 @@ final class AppContainer {
         voiceLanguageStore: VoiceLanguageStoring = InMemoryVoiceLanguageStore(),
         inboxDirectory: URL? = nil,
         securityScopedAccess: SecurityScopedAccessing = URLSecurityScopedAccess(),
+        importCoordinator: FileReadCoordinating = PassthroughFileReadCoordinator(),
         importStagingDirectory: URL? = nil
     ) {
         self.paths = paths
@@ -131,6 +132,7 @@ final class AppContainer {
         )
         self.importStager = ImportFileStager(
             access: securityScopedAccess,
+            coordinator: importCoordinator,
             fileSystem: fileSystem,
             directory: importStagingDirectory ?? ImportFileStager.defaultDirectory()
         )
@@ -216,7 +218,8 @@ final class AppContainer {
 
     /// Реальні шляхи (`<контейнер>/Library/Application Support/VocabApp`, DI6), `UserDefaults.standard`, Keychain
     /// (`service` = bundle id застосунку, DI8), unified logging, фонові задачі (DI18), озвучення, розпізнавання
-    /// мовлення й аудіосесія (I2b), inbox «Поділитися» в App Group (I3; немає групи → без inbox). Під XCTest — унікальний тимчасовий каталог, `InMemorySettingsStore`,
+    /// мовлення й аудіосесія (I2b), inbox «Поділитися» в App Group (I3; немає групи → без inbox), координоване читання
+    /// файлу імпорту (I6, `NSFileCoordinator`). Під XCTest — унікальний тимчасовий каталог, `InMemorySettingsStore`,
     /// `InMemorySecretStore`, мова голосу в пам'яті, без inbox, фонових задач, звуку й мікрофона (hosted-тести ніколи не чіпають справжній словник, `UserDefaults` і Keychain).
     static func makeLive(environment: [String: String]) -> AppContainer {
         if environment[xcTestEnvironmentKey] != nil {
@@ -234,7 +237,8 @@ final class AppContainer {
             speechRecognizer: LivePlatform.makeSpeechRecognizer(),
             audioSession: LivePlatform.makeAudioSessionController(),
             voiceLanguageStore: UserDefaultsVoiceLanguageStore(defaults: .standard),
-            inboxDirectory: InboxLocation.live()
+            inboxDirectory: InboxLocation.live(),
+            importCoordinator: ImportFileStager.liveCoordinator()
         )
     }
 

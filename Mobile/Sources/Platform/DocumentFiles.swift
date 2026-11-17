@@ -62,17 +62,92 @@ struct URLSecurityScopedAccess: SecurityScopedAccessing {
     }
 }
 
+/// Координоване читання файлу (`NSFileCoordinator`): для файлу в iCloud Drive, який ще не завантажено на пристрій,
+/// система спершу завантажує його, а вже потім викликає `accessor` (I6). Протокол — щоб тести й Linux-харнес
+/// обходились без File Provider.
+protocol FileReadCoordinating: Sendable {
+    /// Викликає `accessor` синхронно з URL, який можна читати (може відрізнятися від `url`). Помилка координації або
+    /// помилка `accessor` прокидається назовні.
+    func coordinateReading(at url: URL, _ accessor: (URL) throws -> Void) throws
+}
+
+/// Без координації: `accessor(url)` одразу (Linux-харнес, тести, і запасний варіант без `NSFileCoordinator`).
+struct PassthroughFileReadCoordinator: FileReadCoordinating {
+    init() {}
+
+    func coordinateReading(at url: URL, _ accessor: (URL) throws -> Void) throws {
+        try accessor(url)
+    }
+}
+
+#if canImport(Darwin)
+/// Справжня координація: `NSFileCoordinator().coordinate(readingItemAt:options: [])`. Звичайне читання (без
+/// `.withoutChanges`): інші презентери файлу спершу зберігають зміни, тож копіюємо узгоджену версію; не завантажений
+/// iCloud-файл завантажується до виклику `accessor`. Блокує викликаючий потік на час завантаження: `stage`
+/// викликається синхронно з `MobileAppModel.handleImportSelection` (головний потік) — для файлів, які вже завантажив
+/// `fileImporter`, це миттєво; великий не завантажений файл заморозить UI на час завантаження (свідомо: синхронний
+/// контракт I5, `MobileTransferTests`).
+struct LiveFileReadCoordinator: FileReadCoordinating {
+    init() {}
+
+    func coordinateReading(at url: URL, _ accessor: (URL) throws -> Void) throws {
+        var coordinationError: NSError?
+        var accessorError: Error?
+        NSFileCoordinator(filePresenter: nil).coordinate(
+            readingItemAt: url,
+            options: [],
+            error: &coordinationError
+        ) { readableURL in
+            do {
+                try accessor(readableURL)
+            } catch {
+                accessorError = error
+            }
+        }
+        if let coordinationError {
+            throw coordinationError
+        }
+        if let accessorError {
+            throw accessorError
+        }
+    }
+}
+#endif
+
+extension ImportFileStager {
+    /// Координатор застосунку (`AppContainer.makeLive`): `NSFileCoordinator` на Apple-платформах, без координації на
+    /// Linux.
+    static func liveCoordinator() -> FileReadCoordinating {
+        #if canImport(Darwin)
+        return LiveFileReadCoordinator()
+        #else
+        return PassthroughFileReadCoordinator()
+        #endif
+    }
+}
+
 /// Копіює вибраний файл імпорту в тимчасовий каталог застосунку, перш ніж його читати (I5.2): доступ до
 /// security-scoped URL відкривається лише на час копіювання, а ядро (`DictionaryTransferService`) читає вже
 /// локальну копію — без залежності від File Provider і часу життя доступу (діалог вибору режиму може висіти довго).
+/// Копіювання — всередині координованого читання (I6: не завантажений iCloud-файл спершу завантажується), порядок:
+/// start → coordinate(copy) → stop.
 struct ImportFileStager: Sendable {
     let access: SecurityScopedAccessing
+    let coordinator: FileReadCoordinating
     let fileSystem: FileSystem
     /// Каталог тимчасових копій (створюється за потреби).
     let directory: URL
 
-    init(access: SecurityScopedAccessing, fileSystem: FileSystem, directory: URL) {
+    /// `coordinator` за замовчуванням — без координації (тести, Linux); застосунок передає
+    /// `ImportFileStager.liveCoordinator()` (`AppContainer.makeLive`).
+    init(
+        access: SecurityScopedAccessing,
+        coordinator: FileReadCoordinating = PassthroughFileReadCoordinator(),
+        fileSystem: FileSystem,
+        directory: URL
+    ) {
         self.access = access
+        self.coordinator = coordinator
         self.fileSystem = fileSystem
         self.directory = directory
     }
@@ -82,8 +157,8 @@ struct ImportFileStager: Sendable {
         FileManager.default.temporaryDirectory.appendingPathComponent("VocabImport", isDirectory: true)
     }
 
-    /// Копія `source` у `directory` під унікальним ім'ям. Помилка → `ImportError.readFailed` (текст мовою
-    /// інтерфейсу, без шляхів), словник не змінюється.
+    /// Копія `source` у `directory` під унікальним ім'ям. Помилка (координації, каталогу, копіювання) →
+    /// `ImportError.readFailed` (текст мовою інтерфейсу, без шляхів), словник не змінюється.
     func stage(_ source: URL) throws -> URL {
         let started = access.startAccessing(source)
         defer {
@@ -94,7 +169,9 @@ struct ImportFileStager: Sendable {
         let destination = directory.appendingPathComponent("import-\(UUID().uuidString).json", isDirectory: false)
         do {
             try fileSystem.createDirectory(at: directory)
-            try fileSystem.copyItem(at: source, to: destination)
+            try coordinator.coordinateReading(at: source) { readableURL in
+                try fileSystem.copyItem(at: readableURL, to: destination)
+            }
         } catch {
             throw ImportError.readFailed(FileErrorText.describe(error))
         }
