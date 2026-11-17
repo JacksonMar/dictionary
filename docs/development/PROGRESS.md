@@ -22,7 +22,8 @@
 | I2b — Голосове введення (UI) | done (⏳ Mac) | 1 | PASS умовний — Linux 576 + 72 мобільні тести; Speech/AVFoundation/SwiftUI — Mac |
 | I3 — Share Extension + inbox | done (⏳ Mac) | 1 | PASS умовний — Linux 590 + 86 мобільних; розширення й App Group — Mac |
 | I4 — App Intents + віджет | done (⏳ Mac) | 1 | PASS умовний — Linux 596 + 106 мобільних; AppIntents/WidgetKit — Mac |
-| I5 — Експорт/імпорт, полірування, README | done (⏳ Mac) | 1 | PASS умовний — Linux 596 + 124 мобільних; iOS 129 очікується на Mac |
+| I5 — Експорт/імпорт, полірування, README | done (⏳ пристрій) | 1 | PASS умовний; Mac 2026-11-16: збірка ✅, 127/129 (2 Keychain без підпису) |
+| I6 — Дрібні виправлення (банер inbox, iCloud-імпорт) | in progress | – | – |
 
 ## Середовище перевірки
 
@@ -198,6 +199,9 @@ _(вердикти Judge — нижче по етапах)_
   - iOS-тести: **129**, 127 ✅; 2 Keychain-тести впали з -34018 — збірка без підпису (`CODE_SIGNING_ALLOWED=NO`, немає `Local.xcconfig`), очікувано за `IOS_ALL.md` (iU8: без команди симулятор вимагає План Б).
   - Попередження: `ld … macOS-13.0 … XCTest built for 14.0` (macOS-тести, давнє, не від iOS-етапів); `Metadata extraction skipped` для VocabShare (очікувано).
   - Умовні PASS I0–I5 підтверджено щодо компіляції й автотестів. Лишається: `Config/Local.xcconfig` → підписаний прогін (Keychain-тести) і ручні чеклісти на iPhone (I0.md … I5.md).
+
+#### I6 — контекст
+- 2026-11-17: користувач не може підключити iPhone до Mac (телефон не видно) → перевірку на пристрої відкладено. Рішення оркестратора: закрити два відомі недоліки I3/I5. Навмисна зміна поведінки: `InboxIngestReport.failed` = кількість елементів, що лишились у inbox після зупинки проходу (змінює очікування в `InboxIngestorTests.testStorageFailureKeepsFile`).
 
 ## Відкриті питання / невизначеності щодо macOS API
 
